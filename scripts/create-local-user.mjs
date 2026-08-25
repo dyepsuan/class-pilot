@@ -4,9 +4,11 @@ import readline from "node:readline/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const PBKDF2_ITERATIONS = 310_000;
+const PBKDF2_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const DERIVED_KEY_BYTES = 32;
+
+let executionLabel = "Local";
 
 function readHidden(prompt) {
   if (!process.stdin.isTTY || !process.stdin.setRawMode) {
@@ -96,10 +98,31 @@ async function hashPassword(password) {
 }
 
 async function main() {
+  const cliArguments = process.argv.slice(2);
+  const isRemote = cliArguments.length === 1 && cliArguments[0] === "--remote";
+
+  if (cliArguments.length > 0 && !isRemote) {
+    throw new Error("Usage: node scripts/create-local-user.mjs [--remote]");
+  }
+
+  executionLabel = isRemote ? "Remote" : "Local";
+  const databaseFlag = isRemote ? "--remote" : "--local";
+
   const prompt = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
+  if (isRemote) {
+    console.warn(
+      "WARNING: This will create or update an instructor account in the REMOTE db_classpilot database."
+    );
+    const confirmation = await prompt.question("Type YES to continue: ");
+    if (confirmation !== "YES") {
+      prompt.close();
+      console.log("Remote instructor account creation cancelled.");
+      return;
+    }
+  }
   const email = (await prompt.question("Email: ")).trim().toLowerCase();
   const firstName = (await prompt.question("First name: ")).trim();
   const lastName = (await prompt.question("Last name: ")).trim();
@@ -147,7 +170,7 @@ async function main() {
       "d1",
       "execute",
       "db_classpilot",
-      "--local",
+      databaseFlag,
       "--command",
       sql,
     ],
@@ -159,13 +182,15 @@ async function main() {
   }
 
   if (result.status !== 0) {
-    throw new Error("Wrangler could not create the local instructor account.");
+    throw new Error(`Wrangler could not create the ${executionLabel.toLowerCase()} instructor account.`);
   }
 
-  console.log(`Local instructor account ready for ${email}.`);
+  console.log(`${executionLabel} instructor account ready for ${email}.`);
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : "Could not create the account.");
+  const message =
+    error instanceof Error ? error.message : "Could not create the account.";
+  console.error(`${executionLabel} instructor account creation failed: ${message}`);
   process.exitCode = 1;
 });

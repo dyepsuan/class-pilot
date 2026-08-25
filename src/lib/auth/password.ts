@@ -1,9 +1,13 @@
+import "server-only";
+
+import { pbkdf2 } from "node:crypto";
+
 const PASSWORD_ALGORITHM = "pbkdf2_sha256";
-const PASSWORD_ITERATIONS = 310_000;
+const CURRENT_PASSWORD_ITERATIONS = 100_000;
+const LEGACY_PASSWORD_ITERATIONS = 310_000;
+const ACCEPTED_PASSWORD_ITERATIONS = new Set([100_000, 310_000]);
 const SALT_BYTES = 16;
 const DERIVED_KEY_BYTES = 32;
-
-const encoder = new TextEncoder();
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -34,31 +38,28 @@ function base64UrlToBytes(value: string): Uint8Array | null {
   }
 }
 
-async function derivePasswordKey(
+function derivePasswordKey(
   password: string,
   salt: Uint8Array,
   iterations: number
 ): Promise<Uint8Array> {
-  const passwordKey = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"]
-  );
-
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      hash: "SHA-256",
-      salt: new Uint8Array(salt),
+  return new Promise((resolve, reject) => {
+    pbkdf2(
+      password,
+      salt,
       iterations,
-    },
-    passwordKey,
-    DERIVED_KEY_BYTES * 8
-  );
+      DERIVED_KEY_BYTES,
+      "sha256",
+      (error, key) => {
+        if (error) {
+          reject(error);
+          return;
+        }
 
-  return new Uint8Array(bits);
+        resolve(Uint8Array.from(key));
+      }
+    );
+  });
 }
 
 function constantTimeEqual(left: Uint8Array, right: Uint8Array): boolean {
@@ -77,12 +78,12 @@ export async function hashPassword(password: string): Promise<string> {
   const derivedKey = await derivePasswordKey(
     password,
     salt,
-    PASSWORD_ITERATIONS
+    CURRENT_PASSWORD_ITERATIONS
   );
 
   return [
     PASSWORD_ALGORITHM,
-    PASSWORD_ITERATIONS.toString(),
+    CURRENT_PASSWORD_ITERATIONS.toString(),
     bytesToBase64Url(salt),
     bytesToBase64Url(derivedKey),
   ].join("$");
@@ -95,10 +96,13 @@ export async function verifyPassword(
   const [algorithm, iterationsText, saltText, derivedKeyText, ...rest] =
     storedHash.split("$");
 
+  const iterations = Number(iterationsText);
   if (
     rest.length > 0 ||
     algorithm !== PASSWORD_ALGORITHM ||
-    iterationsText !== PASSWORD_ITERATIONS.toString() ||
+    !Number.isInteger(iterations) ||
+    iterationsText !== iterations.toString() ||
+    !ACCEPTED_PASSWORD_ITERATIONS.has(iterations) ||
     !saltText ||
     !derivedKeyText
   ) {
@@ -108,15 +112,24 @@ export async function verifyPassword(
   const salt = base64UrlToBytes(saltText);
   const expectedKey = base64UrlToBytes(derivedKeyText);
 
-  if (!salt || salt.length !== SALT_BYTES || !expectedKey) {
+  if (!salt || salt.length !== SALT_BYTES || !expectedKey || expectedKey.length !== DERIVED_KEY_BYTES) {
     return false;
   }
 
-  const actualKey = await derivePasswordKey(
-    password,
-    salt,
-    PASSWORD_ITERATIONS
-  );
+  let actualKey: Uint8Array;
+  try {
+    actualKey = await derivePasswordKey(password, salt, iterations);
+  } catch (error) {
+    if (
+      iterations === LEGACY_PASSWORD_ITERATIONS &&
+      error instanceof Error &&
+      error.name === "NotSupportedError"
+    ) {
+      return false;
+    }
+
+    throw error;
+  }
 
   return constantTimeEqual(actualKey, expectedKey);
 }

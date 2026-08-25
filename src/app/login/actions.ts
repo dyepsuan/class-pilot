@@ -14,6 +14,11 @@ type LoginUserRow = {
   auth_id: string | null;
   password_hash: string | null;
 };
+type LoginStage =
+  | "database-lookup"
+  | "password-verification"
+  | "session-creation";
+
 
 export async function login(
   _previousState: LoginState,
@@ -35,6 +40,7 @@ export async function login(
   const rememberMe = formData.get("remember") === "on";
   let user: LoginUserRow | null;
 
+  let stage: LoginStage = "database-lookup";
   try {
     const { env } = getCloudflareContext();
     user = await env.DB.prepare(
@@ -48,6 +54,8 @@ export async function login(
       .bind(email)
       .first<LoginUserRow>();
 
+    stage = "password-verification";
+
     if (
       !user?.auth_id ||
       !user.password_hash ||
@@ -56,9 +64,15 @@ export async function login(
       return { error: "Invalid email or password." };
     }
 
+    stage = "session-creation";
+
     await createSession(user.auth_id, rememberMe);
-  } catch {
-    console.error("[ClassPilot login] Authentication is currently unavailable.");
+  } catch (error) {
+    console.error("[ClassPilot login failure]", {
+      stage,
+      name: error instanceof Error ? error.name : "UnknownError",
+      message: error instanceof Error ? error.message : "Unknown error",
+    });
     return {
       error: "Unable to sign in right now. Please try again.",
     };
