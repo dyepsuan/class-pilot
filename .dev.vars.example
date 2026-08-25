@@ -1,0 +1,13 @@
+# Local Cloudflare/OpenNext bindings
+NEXTJS_ENV=development
+QR_SIGNING_SECRET=replace-with-a-random-secret
+
+# Google OAuth web application credentials
+GOOGLE_OAUTH_CLIENT_ID=replace-with-google-oauth-client-id
+GOOGLE_OAUTH_CLIENT_SECRET=replace-with-google-oauth-client-secret
+
+# Base64url-encoded 32-byte AES key. Generate a real random key locally.
+GMAIL_TOKEN_ENCRYPTION_KEY=replace-with-base64url-encoded-32-byte-key
+
+# Exact reachable Class-pilot origin, without a trailing slash.
+APP_BASE_URL=http://localhost:PORT

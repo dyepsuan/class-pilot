@@ -2,21 +2,34 @@
  * For more details on how to configure Wrangler, refer to:
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
-/**
- * For more details on how to configure Wrangler, refer to:
- * https://developers.cloudflare.com/workers/wrangler/configuration/
- */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "class-pilot",
 	"main": ".open-next/worker.js",
 	"compatibility_date": "2026-08-15",
 	"compatibility_flags": [
+		"nodejs_compat",
 		"global_fetch_strictly_public"
 	],
 	"assets": {
 		"binding": "ASSETS",
 		"directory": ".open-next/assets"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "db_classpilot",
+			"database_id": "84daf3b6-8a6c-4971-a51f-6de463fb2a39"
+		}
+	],
+	"secrets": {
+		"required": [
+			"QR_SIGNING_SECRET",
+			"GOOGLE_OAUTH_CLIENT_ID",
+			"GOOGLE_OAUTH_CLIENT_SECRET",
+			"GMAIL_TOKEN_ENCRYPTION_KEY",
+			"APP_BASE_URL"
+		]
 	},
 	"images": {
 		// Enable image optimization
