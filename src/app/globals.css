@@ -27,3 +27,9 @@ body {
   outline: 2px solid #64748b;
   outline-offset: 2px;
 }
+
+@media (hover: none) and (pointer: coarse) {
+  .attendance-camera-preview {
+    transform: none !important;
+  }
+}

@@ -677,7 +677,7 @@ export default function AttendanceQrScanner({
           <div className="relative overflow-hidden bg-black">
             <video
               ref={videoRef}
-              className="aspect-4/3 w-full -scale-x-100 object-cover"
+              className="attendance-camera-preview aspect-4/3 w-full -scale-x-100 object-cover"
               muted
               playsInline
             />
