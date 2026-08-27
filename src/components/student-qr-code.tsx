@@ -12,6 +12,7 @@ type StudentQrCodeProps = {
   studentNumber: string;
   allowDownload?: boolean;
   accessibleLabel?: string;
+  size?: number;
 };
 
 export default function StudentQrCode({
@@ -19,6 +20,7 @@ export default function StudentQrCode({
   studentNumber,
   allowDownload = true,
   accessibleLabel = "Student attendance QR code",
+  size = 320,
 }: StudentQrCodeProps) {
   const canvasRef =
     useRef<HTMLCanvasElement>(null);
@@ -32,12 +34,16 @@ export default function StudentQrCode({
       canvasRef.current,
       payload,
       {
-        width: 320,
-        margin: 3,
+        width: size,
+        margin: 4,
         errorCorrectionLevel: "M",
+        color: {
+          dark: "#0f172a",
+          light: "#ffffff",
+        },
       }
     );
-  }, [payload]);
+  }, [payload, size]);
 
   function downloadQr() {
     const canvas = canvasRef.current;

@@ -132,3 +132,20 @@ export async function getActiveStudentQrPayload(
     payload,
   };
 }
+
+export async function getOrIssueActiveStudentQrPayload(
+  studentId: number
+) {
+  const { env } = getCloudflareContext();
+  const credential = await issueStudentQrCredential(studentId);
+  const payload = await buildStudentQrPayload(
+    credential.id,
+    credential.student_id,
+    env.QR_SIGNING_SECRET
+  );
+
+  return {
+    credential,
+    payload,
+  };
+}
