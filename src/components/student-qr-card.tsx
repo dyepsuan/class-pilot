@@ -12,13 +12,41 @@ export type StudentQrCardData = {
 
 type StudentQrCardProps = {
   student: StudentQrCardData;
+  selected?: boolean;
+  selectionDisabled?: boolean;
+  onSelectionChange?: (studentId: number, selected: boolean) => void;
 };
 
-export default function StudentQrCard({ student }: StudentQrCardProps) {
+export default function StudentQrCard({
+  student,
+  selected = false,
+  selectionDisabled = false,
+  onSelectionChange,
+}: StudentQrCardProps) {
   return (
-    <article className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-      <div className="h-1 bg-blue-600" aria-hidden="true" />
+    <article
+      className={`flex h-full flex-col overflow-hidden rounded-2xl border bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition ${selected ? "border-blue-300 ring-2 ring-blue-100" : "border-slate-200"}`}
+    >
+      <div
+        className={`h-1 ${selected ? "bg-blue-700" : "bg-blue-600"}`}
+        aria-hidden="true"
+      />
       <div className="flex flex-1 flex-col p-5 sm:p-6">
+        {onSelectionChange && (
+          <label className="mb-4 flex min-h-10 cursor-pointer items-center gap-3 self-start rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={selected}
+              disabled={selectionDisabled}
+              onChange={(event) =>
+                onSelectionChange(student.studentId, event.target.checked)
+              }
+              aria-label={`Select QR for ${student.studentName}`}
+              className="h-5 w-5 rounded border-slate-300 accent-blue-600 disabled:cursor-not-allowed"
+            />
+            <span>{selected ? "Selected" : "Select student"}</span>
+          </label>
+        )}
         <div className="flex min-h-64 items-center justify-center rounded-xl bg-slate-50 p-3">
           {student.payload ? (
             <StudentQrCode

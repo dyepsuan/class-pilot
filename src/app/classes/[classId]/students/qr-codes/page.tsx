@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import StudentQrCard from "@/components/student-qr-card";
-import StudentQrPdfButton from "@/components/student-qr-pdf-button";
+import StudentQrManager from "@/components/student-qr-manager";
 import { requireUser } from "@/lib/auth/session";
 import { getInstructorStudentQrRoster } from "@/lib/student-qr-roster";
 
@@ -40,7 +39,7 @@ export default async function StudentQrCodesPage({
         <span className="ml-2">Back to Students</span>
       </Link>
 
-      <div className="mt-5 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+      <div className="mt-5">
         <header>
           <p className="text-sm font-semibold text-blue-700">
             {roster.classItem.subject_code} &middot; {roster.classItem.section}
@@ -53,12 +52,6 @@ export default async function StudentQrCodesPage({
           </p>
         </header>
 
-        {readyCount > 0 && (
-          <StudentQrPdfButton
-            students={roster.students}
-            section={roster.classItem.section}
-          />
-        )}
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -89,7 +82,8 @@ export default async function StudentQrCodesPage({
           {failedCount === 1
             ? "student's QR code is"
             : "student QR codes are"}{" "}
-          unavailable. The PDF will include ready QR codes only.
+          unavailable. Unavailable cards cannot be downloaded until they are
+          regenerated.
         </div>
       )}
 
@@ -109,11 +103,11 @@ export default async function StudentQrCodesPage({
           </p>
         </section>
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {roster.students.map((student) => (
-            <StudentQrCard key={student.studentId} student={student} />
-          ))}
-        </div>
+        <StudentQrManager
+          classId={id}
+          initialStudents={roster.students}
+          section={roster.classItem.section}
+        />
       )}
     </div>
   );

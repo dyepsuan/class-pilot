@@ -9,6 +9,7 @@ import type { StudentQrCardData } from "@/components/student-qr-card";
 type StudentQrPdfButtonProps = {
   students: StudentQrCardData[];
   section: string;
+  disabled?: boolean;
 };
 
 function sanitizeFilenamePart(value: string): string {
@@ -39,17 +40,22 @@ function fitText(doc: jsPDF, value: string, maxWidth: number): string {
 export default function StudentQrPdfButton({
   students,
   section,
+  disabled = false,
 }: StudentQrPdfButtonProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const readyStudents = students.filter(
+  const exportStudents = students.filter(
     (student): student is StudentQrCardData & { payload: string } =>
       Boolean(student.payload)
   );
+  const canDownload =
+    !disabled &&
+    students.length > 0 &&
+    exportStudents.length === students.length;
 
   async function downloadPdf() {
-    if (isGenerating || readyStudents.length === 0) {
+    if (isGenerating || !canDownload) {
       return;
     }
 
@@ -72,7 +78,7 @@ export default function StudentQrPdfButton({
       const cardHeight = (pageHeight - pageMargin * 2 - rowGap) / 2;
       const qrSize = 68;
 
-      for (let index = 0; index < readyStudents.length; index += 1) {
+      for (let index = 0; index < exportStudents.length; index += 1) {
         if (index > 0 && index % 4 === 0) {
           doc.addPage();
         }
@@ -82,7 +88,7 @@ export default function StudentQrPdfButton({
         const row = Math.floor(position / 2);
         const x = pageMargin + column * (cardWidth + columnGap);
         const y = pageMargin + row * (cardHeight + rowGap);
-        const student = readyStudents[index];
+        const student = exportStudents[index];
         const qrX = x + (cardWidth - qrSize) / 2;
         const qrY = y + 18;
         const qrDataUrl = await QRCode.toDataURL(student.payload, {
@@ -150,7 +156,9 @@ export default function StudentQrPdfButton({
         });
       }
 
-      doc.save(`${sanitizeFilenamePart(section)}-student-qr-codes.pdf`);
+      doc.save(
+        `${sanitizeFilenamePart(section)}-selected-student-qr-codes.pdf`
+      );
     } catch (pdfError) {
       console.error("Could not generate the student QR PDF.", pdfError);
       setError("The PDF could not be generated. Please try again.");
@@ -164,10 +172,10 @@ export default function StudentQrPdfButton({
       <button
         type="button"
         onClick={downloadPdf}
-        disabled={isGenerating || readyStudents.length === 0}
+        disabled={isGenerating || !canDownload}
         className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300 sm:w-auto"
       >
-        {isGenerating ? "Preparing PDF..." : "Print / Download PDF"}
+        {isGenerating ? "Preparing PDF..." : "Download PDF"}
       </button>
       {error && (
         <p role="alert" className="mt-2 max-w-xs text-xs text-red-600">
