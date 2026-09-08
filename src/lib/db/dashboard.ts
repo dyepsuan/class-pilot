@@ -26,7 +26,7 @@ export type DashboardClass = {
 
 export type DashboardActivity = {
   key: string;
-  kind: "ATTENDANCE" | "QUIZ" | "LABORATORY";
+  kind: "ATTENDANCE" | "QUIZ" | "LABORATORY" | "DROPBOX";
   class_id: number;
   section: string;
   detail: string;
@@ -214,6 +214,23 @@ export async function getDashboardData(): Promise<DashboardData> {
             l.id AS destination_id
           FROM laboratories l
           INNER JOIN classes c ON c.id = l.class_id
+          WHERE c.status = 'ACTIVE'
+
+          UNION ALL
+
+          SELECT
+            'dropbox-' || df.id AS key,
+            'DROPBOX' AS kind,
+            df.class_id,
+            c.section,
+            trim(s.first_name || ' ' || s.last_name)
+              || ' uploaded ' || char(34) || df.display_name || char(34)
+              AS detail,
+            df.created_at AS occurred_at,
+            df.class_id AS destination_id
+          FROM dropbox_files df
+          INNER JOIN classes c ON c.id = df.class_id
+          INNER JOIN students s ON s.id = df.student_id
           WHERE c.status = 'ACTIVE'
         ) activity
         WHERE occurred_at IS NOT NULL

@@ -23,6 +23,7 @@ const activityToneClasses: Record<DashboardActivity["kind"], string> = {
   ATTENDANCE: "bg-green-100 text-green-700",
   QUIZ: "bg-blue-100 text-blue-700",
   LABORATORY: "bg-gray-100 text-gray-600",
+  DROPBOX: "bg-violet-100 text-violet-700",
 };
 
 function formatTerm(term: string) {
@@ -45,6 +46,10 @@ function activityHref(activity: DashboardActivity) {
 
   if (activity.kind === "QUIZ") {
     return `/classes/${activity.class_id}/quizzes/${activity.destination_id}`;
+  }
+
+  if (activity.kind === "DROPBOX") {
+    return `/classes/${activity.class_id}/dropbox`;
   }
 
   return `/classes/${activity.class_id}/laboratories/${activity.destination_id}`;
@@ -384,7 +389,7 @@ export default async function ClassesPage() {
                   Recent Activity Across Classes
                 </h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  Latest attendance, quiz, and laboratory updates.
+                  Latest attendance, quiz, laboratory, and Dropbox updates.
                 </p>
               </div>
 
@@ -407,7 +412,7 @@ export default async function ClassesPage() {
                           {activity.kind.charAt(0)}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium leading-5 text-gray-900">
+                          <span className="block break-words text-sm font-medium leading-5 text-gray-900">
                             {activity.detail}
                           </span>
                           <span className="mt-1 block text-xs leading-5 text-gray-500">

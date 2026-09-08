@@ -47,6 +47,13 @@ export default function ClassNavigation({
         `${basePath}/laboratories`
       ),
     },
+    {
+      label: "Dropbox",
+      href: `${basePath}/dropbox`,
+      active: pathname.startsWith(
+        `${basePath}/dropbox`
+      ),
+    },
   ];
 
   return (

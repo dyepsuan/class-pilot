@@ -8,6 +8,7 @@ const items = [
   { label: "Attendance", href: "/student/attendance" },
   { label: "Quizzes", href: "/student/quizzes" },
   { label: "Laboratories", href: "/student/laboratories" },
+  { label: "Dropbox", href: "/student/dropbox" },
   { label: "My QR", href: "/student/qr" },
   { label: "Profile", href: "/student/profile" },
 ];

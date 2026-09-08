@@ -20,6 +20,7 @@ const activityToneClasses: Record<
   ATTENDANCE: "bg-green-100 text-green-700",
   QUIZ: "bg-blue-100 text-blue-700",
   LABORATORY: "bg-gray-100 text-gray-600",
+  DROPBOX: "bg-violet-100 text-violet-700",
 };
 
 function parseStoredDate(value: string) {
@@ -439,7 +440,7 @@ export default async function ClassOverviewPage({
         <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 shadow-sm">
         <SectionHeader
           title="Recent Class Activity"
-          subtitle="Latest recorded events across attendance, quizzes, and laboratories."
+          subtitle="Latest recorded events across attendance, quizzes, laboratories, and Dropbox."
         />
 
         {recentActivity.length === 0 ? (
@@ -473,7 +474,7 @@ export default async function ClassOverviewPage({
                       : ""
                   }`}
                 >
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="break-words text-sm font-medium text-gray-900">
                     {activity.detail}
                   </p>
                   <p className="mt-1.5 text-xs leading-5 text-gray-500">

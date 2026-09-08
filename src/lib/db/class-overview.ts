@@ -42,7 +42,7 @@ export type OverviewAssessment = {
 
 export type OverviewActivity = {
   key: string;
-  kind: "ATTENDANCE" | "QUIZ" | "LABORATORY";
+  kind: "ATTENDANCE" | "QUIZ" | "LABORATORY" | "DROPBOX";
   detail: string;
   occurred_at: string;
 };
@@ -315,6 +315,19 @@ export async function getClassOverviewData(
             END AS occurred_at
           FROM laboratories l
           WHERE l.class_id = ?1
+
+          UNION ALL
+
+          SELECT
+            'dropbox-' || df.id AS key,
+            'DROPBOX' AS kind,
+            trim(s.first_name || ' ' || s.last_name)
+              || ' uploaded ' || char(34) || df.display_name || char(34)
+              AS detail,
+            df.created_at AS occurred_at
+          FROM dropbox_files df
+          INNER JOIN students s ON s.id = df.student_id
+          WHERE df.class_id = ?1
         ) activity
         WHERE occurred_at IS NOT NULL
         ORDER BY datetime(occurred_at) DESC

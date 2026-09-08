@@ -22,6 +22,12 @@
 			"database_id": "84daf3b6-8a6c-4971-a51f-6de463fb2a39"
 		}
 	],
+	"r2_buckets": [
+		{
+			"binding": "DROPBOX_BUCKET",
+			"bucket_name": "class-pilot-dropbox"
+		}
+	],
 	"secrets": {
 		"required": [
 			"QR_SIGNING_SECRET",

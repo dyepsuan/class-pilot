@@ -250,6 +250,7 @@ Current migrations:
 0008_add_student_authentication.sql
 0009_add_student_setup_tokens.sql
 0010_add_gmail_setup_link_delivery.sql
+0011_add_dropbox_files.sql
 ```
 
 Apply migrations to the local database using the configured D1 database name:
@@ -259,6 +260,19 @@ npx wrangler d1 migrations apply db_classpilot --local
 ```
 
 Confirm the configured database name in `wrangler.jsonc` before running the command.
+
+### Dropbox R2 storage
+
+Dropbox file contents use the private `DROPBOX_BUCKET` R2 binding configured for
+the `class-pilot-dropbox` bucket. Create the bucket once before deploying:
+
+```bash
+npx wrangler r2 bucket create class-pilot-dropbox
+```
+
+Do not configure a public development URL or custom domain for this bucket.
+Wrangler supplies a local R2 implementation through the same binding during
+local development and preview commands.
 
 ---
 
