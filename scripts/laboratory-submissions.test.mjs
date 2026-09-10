@@ -72,6 +72,25 @@ const sources = Object.fromEntries(
   )
 );
 
+function loadPortalMemberSorter() {
+  const match = sources.portal.match(
+    /export function sortStudentGroupMembersForPortal[\s\S]*?^\}/mu
+  );
+
+  assert.ok(match, "student group member sorter should be exported for regression coverage");
+
+  const javascript = ts.transpileModule(match[0].replace(/^export /u, ""), {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+
+  return Function(`${javascript}\nreturn sortStudentGroupMembersForPortal;`)();
+}
+
+const sortStudentGroupMembersForPortal = loadPortalMemberSorter();
+
 test("laboratory submission validation accepts only the Phase 2 file set", () => {
   assert.equal(validation.MAX_LABORATORY_SUBMISSION_SIZE, 20 * 1024 * 1024);
 
@@ -226,11 +245,71 @@ test("student group laboratory payload does not include member score data", () =
 
   assert.match(sources.portal, /LEFT JOIN laboratory_scores ls[\s\S]*AND ls\.student_id = \?1/u);
   assert.match(sources.portal, /members\.push\(\{ student_id: Number\(member\.student_id\), name: member\.name \}\)/u);
+  assert.match(sources.portal, /sortStudentGroupMembersForPortal\(\s*groupMembers,\s*authenticatedStudentId\s*\)/u);
   assert.match(groupMemberType, /student_id: number/u);
   assert.match(groupMemberType, /name: string/u);
   assert.doesNotMatch(sources.portal, /member_score|memberScore|member\.score/u);
   assert.doesNotMatch(groupMemberType, /score|individual_score|group_score/u);
   assert.doesNotMatch(sources.studentPage, /member\.score|individual_score\}.*member/u);
+});
+
+test("student group members put the logged-in student first when normally alphabetically in the middle", () => {
+  const members = [
+    { student_id: 1, name: "Abadiano, Shiela Doroja" },
+    { student_id: 2, name: "Acedillo, Jeff Suan" },
+    { student_id: 3, name: "Baysa, Josephene Sabian" },
+    { student_id: 4, name: "Cruz, Joven" },
+  ];
+
+  const sorted = sortStudentGroupMembersForPortal(members, 2);
+
+  assert.deepEqual(
+    sorted.map((member) => member.student_id),
+    [2, 1, 3, 4]
+  );
+  assert.deepEqual(
+    sorted.slice(1).map((member) => member.name),
+    ["Abadiano, Shiela Doroja", "Baysa, Josephene Sabian", "Cruz, Joven"]
+  );
+});
+
+test("student group members put the logged-in student first when normally alphabetically last", () => {
+  const members = [
+    { student_id: 1, name: "Abadiano, Shiela Doroja" },
+    { student_id: 2, name: "Baysa, Josephene Sabian" },
+    { student_id: 3, name: "Cruz, Joven" },
+    { student_id: 4, name: "Zulueta, Current Student" },
+  ];
+
+  const sorted = sortStudentGroupMembersForPortal(members, 4);
+
+  assert.deepEqual(
+    sorted.map((member) => member.student_id),
+    [4, 1, 2, 3]
+  );
+  assert.deepEqual(
+    sorted.slice(1).map((member) => member.name),
+    ["Abadiano, Shiela Doroja", "Baysa, Josephene Sabian", "Cruz, Joven"]
+  );
+});
+
+test("student group member sorting is case-insensitive for other members and keeps member payload private", () => {
+  const members = [
+    { student_id: 10, name: "cruz, Joven" },
+    { student_id: 11, name: "Acedillo, Jeff Suan" },
+    { student_id: 12, name: "abadiano, Shiela Doroja" },
+  ];
+
+  const sorted = sortStudentGroupMembersForPortal(members, 11);
+
+  assert.deepEqual(
+    sorted.map((member) => member.name),
+    ["Acedillo, Jeff Suan", "abadiano, Shiela Doroja", "cruz, Joven"]
+  );
+  assert.deepEqual(
+    Object.keys(sorted[0]).sort(),
+    ["name", "student_id"]
+  );
 });
 
 test("download headers include RFC 5987 filename support and nosniff route uses them", () => {

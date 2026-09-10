@@ -45,6 +45,18 @@ export type StudentPortalLaboratories = {
   summary: ReturnType<typeof summarizeStudentLaboratories>;
 };
 
+export type StudentOpenActivity = {
+  laboratory_id: number;
+  lab_no: number;
+  title: string;
+  lab_type: "individual" | "group";
+  status: "open";
+  due_date: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  submission_status: "Not submitted" | "Submitted" | "Late" | null;
+};
+
 export type StudentPortalLaboratoryRecord = StudentProfileData["laboratories"][number] & {
   groups_locked_at: string | null;
   group_id: number | null;
@@ -118,6 +130,8 @@ export type StudentPortalDashboard = {
   classItem: StudentPortalClass;
   profile: StudentProfileData;
   summary: StudentAcademicSummary;
+  openActivities: StudentOpenActivity[];
+  hasMoreOpenActivities: boolean;
 };
 
 export type StudentPortalQrData = {
@@ -371,6 +385,28 @@ export async function getStudentPortalQuizzes(
   };
 }
 
+export function sortStudentGroupMembersForPortal(
+  members: StudentPortalLaboratoryRecord["group_members"],
+  authenticatedStudentId: number
+): StudentPortalLaboratoryRecord["group_members"] {
+  return [...members].sort((left, right) => {
+    const leftIsCurrentStudent = left.student_id === authenticatedStudentId;
+    const rightIsCurrentStudent = right.student_id === authenticatedStudentId;
+
+    if (leftIsCurrentStudent && !rightIsCurrentStudent) {
+      return -1;
+    }
+
+    if (!leftIsCurrentStudent && rightIsCurrentStudent) {
+      return 1;
+    }
+
+    return left.name.localeCompare(right.name, undefined, {
+      sensitivity: "base",
+    });
+  });
+}
+
 export async function getStudentPortalLaboratories(
   authenticatedStudentId: number,
   classItem: StudentPortalClass
@@ -492,32 +528,39 @@ export async function getStudentPortalLaboratories(
     membersByGroup.set(Number(member.group_id), members);
   }
 
-  const records: StudentPortalLaboratoryRecord[] = result.results.map((record) => ({
-    ...record,
-    group_submission: record.group_submission_id === null
-      ? null
-      : {
-          id: record.group_submission_id,
-          original_filename: record.group_submission_original_filename ?? "Submission",
-          mime_type: record.group_submission_mime_type ?? "application/octet-stream",
-          file_size: Number(record.group_submission_file_size ?? 0),
-          uploaded_by_student_id: Number(
-            record.group_submission_uploaded_by_student_id ?? 0
-          ),
-          uploaded_by_name: record.group_submission_uploaded_by_name ?? "Student",
-          submitted_at: record.group_submission_submitted_at ?? "",
-          updated_at: record.group_submission_updated_at ?? "",
-          timing: record.group_submission_updated_at
-            ? getLaboratorySubmissionTiming(
-                record.group_submission_updated_at,
-                record.due_date
-              )
-            : null,
-        },
-    group_members: record.group_id === null
+  const records: StudentPortalLaboratoryRecord[] = result.results.map((record) => {
+    const groupMembers = record.group_id === null
       ? []
-      : membersByGroup.get(Number(record.group_id)) ?? [],
-  }));
+      : membersByGroup.get(Number(record.group_id)) ?? [];
+
+    return {
+      ...record,
+      group_submission: record.group_submission_id === null
+        ? null
+        : {
+            id: record.group_submission_id,
+            original_filename: record.group_submission_original_filename ?? "Submission",
+            mime_type: record.group_submission_mime_type ?? "application/octet-stream",
+            file_size: Number(record.group_submission_file_size ?? 0),
+            uploaded_by_student_id: Number(
+              record.group_submission_uploaded_by_student_id ?? 0
+            ),
+            uploaded_by_name: record.group_submission_uploaded_by_name ?? "Student",
+            submitted_at: record.group_submission_submitted_at ?? "",
+            updated_at: record.group_submission_updated_at ?? "",
+            timing: record.group_submission_updated_at
+              ? getLaboratorySubmissionTiming(
+                  record.group_submission_updated_at,
+                  record.due_date
+                )
+              : null,
+          },
+      group_members: sortStudentGroupMembersForPortal(
+        groupMembers,
+        authenticatedStudentId
+      ),
+    };
+  });
 
   return {
     classItem,
@@ -525,11 +568,126 @@ export async function getStudentPortalLaboratories(
     summary: summarizeStudentLaboratories(records),
   };
 }
+
+type StudentOpenActivityRow = Omit<
+  StudentOpenActivity,
+  "status" | "submission_status"
+> & {
+  status: "open";
+  group_submission_id: string | null;
+  group_submission_updated_at: string | null;
+};
+
+export async function getStudentOpenActivities(
+  authenticatedStudentId: number,
+  classItem: StudentPortalClass,
+  limit = 5
+): Promise<{
+  activities: StudentOpenActivity[];
+  hasMore: boolean;
+}> {
+  const { env } = getCloudflareContext();
+  const previewLimit = Math.max(1, Math.trunc(limit));
+  const result = await env.DB.prepare(
+    `
+      WITH student_groups AS (
+        SELECT
+          lg.id AS group_id,
+          lg.laboratory_id,
+          lg.name AS group_name
+        FROM laboratory_group_members lgm
+        INNER JOIN laboratory_groups lg
+          ON lg.id = lgm.laboratory_group_id
+        WHERE lgm.student_id = ?1
+          AND lg.id = (
+            SELECT MIN(lg2.id)
+            FROM laboratory_group_members lgm2
+            INNER JOIN laboratory_groups lg2
+              ON lg2.id = lgm2.laboratory_group_id
+            WHERE lgm2.student_id = ?1
+              AND lg2.laboratory_id = lg.laboratory_id
+          )
+      )
+      SELECT
+        l.id AS laboratory_id,
+        l.lab_no,
+        l.title,
+        l.lab_type,
+        l.status,
+        l.due_date,
+        sgs.group_id,
+        sgs.group_name,
+        lgsub.id AS group_submission_id,
+        lgsub.updated_at AS group_submission_updated_at
+      FROM laboratories l
+      LEFT JOIN student_groups sgs
+        ON sgs.laboratory_id = l.id
+      LEFT JOIN laboratory_group_submissions lgsub
+        ON lgsub.laboratory_id = l.id
+        AND lgsub.group_id = sgs.group_id
+      WHERE l.class_id = ?2
+        AND l.status = 'open'
+        AND (
+          l.lab_type = 'individual'
+          OR (
+            l.lab_type = 'group'
+            AND ${LABORATORY_EFFECTIVE_LOCK_SQL}
+            AND sgs.group_id IS NOT NULL
+          )
+        )
+      ORDER BY
+        CASE WHEN l.due_date IS NULL THEN 1 ELSE 0 END ASC,
+        l.due_date ASC,
+        l.lab_no ASC,
+        l.id ASC
+      LIMIT ?3
+    `
+  )
+    .bind(authenticatedStudentId, classItem.id, previewLimit + 1)
+    .all<StudentOpenActivityRow>();
+
+  const rows = result.results ?? [];
+  const activities: StudentOpenActivity[] = rows.slice(0, previewLimit).map((activity) => {
+    const timing = activity.group_submission_updated_at
+      ? getLaboratorySubmissionTiming(
+          activity.group_submission_updated_at,
+          activity.due_date
+        )
+      : null;
+
+    return {
+      laboratory_id: Number(activity.laboratory_id),
+      lab_no: Number(activity.lab_no),
+      title: activity.title,
+      lab_type: activity.lab_type,
+      status: activity.status,
+      due_date: activity.due_date,
+      group_id: activity.group_id === null ? null : Number(activity.group_id),
+      group_name: activity.group_name,
+      submission_status: activity.lab_type === "group"
+        ? timing === "LATE"
+          ? "Late"
+          : activity.group_submission_id
+            ? "Submitted"
+            : "Not submitted"
+        : null,
+    };
+  });
+
+  return {
+    activities,
+    hasMore: rows.length > previewLimit,
+  };
+}
+
 export async function getStudentPortalDashboard(
   authenticatedStudentId: number,
   classItem: StudentPortalClass
 ): Promise<StudentPortalDashboard | null> {
-  const profile = await getStudentProfile(classItem.id, authenticatedStudentId);
+  const [profile, openActivities] = await Promise.all([
+    getStudentProfile(classItem.id, authenticatedStudentId),
+    getStudentOpenActivities(authenticatedStudentId, classItem),
+  ]);
 
   if (!profile || profile.student.enrollment_status !== "ACTIVE") {
     return null;
@@ -539,5 +697,7 @@ export async function getStudentPortalDashboard(
     classItem,
     profile,
     summary: summarizeStudentAcademics(profile),
+    openActivities: openActivities.activities,
+    hasMoreOpenActivities: openActivities.hasMore,
   };
 }
