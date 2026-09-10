@@ -65,5 +65,5 @@ export async function studentLogin(
     return { error: "Unable to sign in right now. Please try again." };
   }
 
-  redirect("/student");
+  redirect("/student/login/complete");
 }

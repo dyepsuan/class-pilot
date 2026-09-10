@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --test scripts/credential-hashing.test.mjs scripts/dropbox-foundation.test.mjs scripts/student-dropbox.test.mjs scripts/instructor-dropbox.test.mjs scripts/dropbox-hardening.test.mjs",
+    "test": "node --test scripts/credential-hashing.test.mjs scripts/dropbox-foundation.test.mjs scripts/student-dropbox.test.mjs scripts/instructor-dropbox.test.mjs scripts/dropbox-hardening.test.mjs scripts/laboratory-submissions.test.mjs",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",

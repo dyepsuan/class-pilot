@@ -2,9 +2,16 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export const STUDENT_SESSION_COOKIE_NAME = "class_pilot_student_session";
+import {
+  createStudentSessionCookie,
+  expireCanonicalStudentSessionCookie,
+  expireLegacyStudentSessionCookie,
+  STUDENT_SESSION_COOKIE_NAME,
+  STUDENT_SESSION_SECONDS,
+} from "./student-session-cookie";
 
-const STUDENT_SESSION_SECONDS = 60 * 60 * 24 * 7;
+export { STUDENT_SESSION_COOKIE_NAME } from "./student-session-cookie";
+
 const SESSION_TOKEN_BYTES = 32;
 
 export type AuthenticatedStudent = {
@@ -82,14 +89,13 @@ export async function createStudentSession(studentId: number): Promise<void> {
     .run();
 
   const cookieStore = await cookies();
-  cookieStore.set(STUDENT_SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/student",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: STUDENT_SESSION_SECONDS,
-    expires: expiresAt,
-  });
+  cookieStore.set(
+    createStudentSessionCookie(
+      token,
+      expiresAt,
+      process.env.NODE_ENV === "production"
+    )
+  );
 }
 
 export async function getStudentSession(): Promise<AuthenticatedStudent | null> {
@@ -163,29 +169,52 @@ export async function requireStudent(): Promise<AuthenticatedStudent> {
   return student;
 }
 
+async function deleteStudentSessionToken(
+  token: string | undefined
+): Promise<void> {
+  if (!token || token.length > 512) {
+    return;
+  }
+
+  const tokenHash = await hashStudentSessionToken(token);
+  const { env } = getCloudflareContext();
+
+  await env.DB.prepare(
+    "DELETE FROM student_sessions WHERE session_token_hash = ?1"
+  )
+    .bind(tokenHash)
+    .run();
+}
+
+export async function clearLegacyStudentSessionCookie(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(
+    expireLegacyStudentSessionCookie(process.env.NODE_ENV === "production")
+  );
+}
+
 export async function destroyStudentSession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(STUDENT_SESSION_COOKIE_NAME)?.value;
 
   try {
-    if (token && token.length <= 512) {
-      const tokenHash = await hashStudentSessionToken(token);
-      const { env } = getCloudflareContext();
-
-      await env.DB.prepare(
-        "DELETE FROM student_sessions WHERE session_token_hash = ?1"
-      )
-        .bind(tokenHash)
-        .run();
-    }
+    await deleteStudentSessionToken(token);
   } finally {
-    cookieStore.set(STUDENT_SESSION_COOKIE_NAME, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/student",
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 0,
-      expires: new Date(0),
-    });
+    cookieStore.set(
+      expireCanonicalStudentSessionCookie(process.env.NODE_ENV === "production")
+    );
+  }
+}
+
+export async function destroyLegacyStudentSession(): Promise<void> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(STUDENT_SESSION_COOKIE_NAME)?.value;
+
+  try {
+    await deleteStudentSessionToken(token);
+  } finally {
+    cookieStore.set(
+      expireLegacyStudentSessionCookie(process.env.NODE_ENV === "production")
+    );
   }
 }

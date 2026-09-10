@@ -38,6 +38,100 @@ const studentOperations = await loadTypeScriptModule(
 const downloadHeaders = await loadTypeScriptModule(
   "../src/lib/dropbox/download-headers.ts"
 );
+const studentSessionCookies = await loadTypeScriptModule(
+  "../src/lib/auth/student-session-cookie.ts"
+);
+const studentDropboxRouteSources = await Promise.all(
+  [
+    "../src/app/api/student/dropbox/route.ts",
+    "../src/app/api/student/dropbox/[fileId]/route.ts",
+    "../src/app/api/student/dropbox/[fileId]/download/route.ts",
+  ].map((relativePath) =>
+    readFile(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8")
+  )
+);
+const studentLoginActionSource = await readFile(
+  fileURLToPath(new URL("../src/app/student/login/actions.ts", import.meta.url)),
+  "utf8"
+);
+const studentLoginCompletionSource = await readFile(
+  fileURLToPath(
+    new URL("../src/app/student/login/complete/route.ts", import.meta.url)
+  ),
+  "utf8"
+);
+const studentLogoutActionSource = await readFile(
+  fileURLToPath(new URL("../src/app/student/logout/actions.ts", import.meta.url)),
+  "utf8"
+);
+const studentLogoutCompletionSource = await readFile(
+  fileURLToPath(new URL("../src/app/student/logout/route.ts", import.meta.url)),
+  "utf8"
+);
+
+test("student session creation issues the canonical root-scoped cookie", () => {
+  const expiresAt = new Date("2030-01-02T03:04:05.000Z");
+  const cookie = studentSessionCookies.createStudentSessionCookie(
+    "session-token",
+    expiresAt,
+    true
+  );
+
+  assert.equal(cookie.name, "class_pilot_student_session");
+  assert.equal(cookie.value, "session-token");
+  assert.equal(cookie.path, "/");
+  assert.equal(cookie.httpOnly, true);
+  assert.equal(cookie.sameSite, "lax");
+  assert.equal(cookie.secure, true);
+  assert.equal(cookie.maxAge, 60 * 60 * 24 * 7);
+  assert.equal(cookie.expires, expiresAt);
+});
+
+test("student login completion expires the legacy path cookie", () => {
+  const cookie =
+    studentSessionCookies.expireLegacyStudentSessionCookie(true);
+
+  assert.equal(cookie.path, "/student");
+  assert.equal(cookie.value, "");
+  assert.equal(cookie.maxAge, 0);
+  assert.equal(cookie.expires.getTime(), 0);
+  assert.match(
+    studentLoginActionSource,
+    /redirect\("\/student\/login\/complete"\)/u
+  );
+  assert.match(
+    studentLoginCompletionSource,
+    /await clearLegacyStudentSessionCookie\(\)/u
+  );
+});
+
+test("student logout clears canonical and legacy path cookies", () => {
+  const canonicalCookie =
+    studentSessionCookies.expireCanonicalStudentSessionCookie(false);
+  const legacyCookie =
+    studentSessionCookies.expireLegacyStudentSessionCookie(false);
+
+  assert.equal(canonicalCookie.path, "/");
+  assert.equal(canonicalCookie.maxAge, 0);
+  assert.equal(legacyCookie.path, "/student");
+  assert.equal(legacyCookie.maxAge, 0);
+  assert.match(studentLogoutActionSource, /await destroyStudentSession\(\)/u);
+  assert.match(studentLogoutActionSource, /redirect\("\/student\/logout"\)/u);
+  assert.match(
+    studentLogoutCompletionSource,
+    /await destroyLegacyStudentSession\(\)/u
+  );
+});
+
+test("all student Dropbox routes use the canonical student session resolver", () => {
+  for (const source of studentDropboxRouteSources) {
+    assert.match(
+      source,
+      /import \{ getStudentSession \} from "@\/lib\/auth\/student-session";/u
+    );
+    assert.match(source, /await getStudentSession\(\)/u);
+  }
+});
 
 test("student upload context requires the selected active class", () => {
   assert.equal(

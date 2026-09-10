@@ -9,6 +9,11 @@ import {
   type StudentProfileData,
 } from "./student-profile";
 import { getActiveStudentQrPayload } from "./student-qr";
+import { LABORATORY_EFFECTIVE_LOCK_SQL } from "./laboratory-grouping";
+import {
+  getLaboratorySubmissionTiming,
+  type LaboratorySubmissionTiming,
+} from "../laboratory-submissions/deadline";
 
 export type StudentPortalClass = {
   id: number;
@@ -36,8 +41,45 @@ export type StudentPortalQuizzes = {
 
 export type StudentPortalLaboratories = {
   classItem: StudentPortalClass;
-  records: StudentProfileData["laboratories"];
+  records: StudentPortalLaboratoryRecord[];
   summary: ReturnType<typeof summarizeStudentLaboratories>;
+};
+
+export type StudentPortalLaboratoryRecord = StudentProfileData["laboratories"][number] & {
+  groups_locked_at: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  group_members: Array<{
+    student_id: number;
+    name: string;
+  }>;
+  group_submission: StudentPortalGroupSubmission | null;
+};
+
+export type StudentPortalGroupSubmission = {
+  id: string;
+  original_filename: string;
+  mime_type: string;
+  file_size: number;
+  uploaded_by_student_id: number;
+  uploaded_by_name: string;
+  submitted_at: string;
+  updated_at: string;
+  timing: LaboratorySubmissionTiming | null;
+};
+
+type StudentPortalLaboratoryRow = Omit<
+  StudentPortalLaboratoryRecord,
+  "group_members" | "group_submission"
+> & {
+  group_submission_id: string | null;
+  group_submission_original_filename: string | null;
+  group_submission_mime_type: string | null;
+  group_submission_file_size: number | null;
+  group_submission_uploaded_by_student_id: number | null;
+  group_submission_uploaded_by_name: string | null;
+  group_submission_submitted_at: string | null;
+  group_submission_updated_at: string | null;
 };
 
 export type StudentActivity = {
@@ -336,10 +378,13 @@ export async function getStudentPortalLaboratories(
   const { env } = getCloudflareContext();
   const result = await env.DB.prepare(
     `
-      WITH student_group_scores AS (
+      WITH student_groups AS (
         SELECT
+          lg.id AS group_id,
           lg.laboratory_id,
-          lg.group_score
+          lg.name AS group_name,
+          lg.group_score,
+          lg.updated_at AS group_score_updated_at
         FROM laboratory_group_members lgm
         INNER JOIN laboratory_groups lg
           ON lg.id = lgm.laboratory_group_id
@@ -364,31 +409,120 @@ export async function getStudentPortalLaboratories(
         l.status,
         l.start_date,
         l.due_date,
+        l.groups_locked_at,
         ls.individual_score,
+        sgs.group_id,
+        sgs.group_name,
         sgs.group_score,
-        ls.updated_at AS score_updated_at
+        lgsub.id AS group_submission_id,
+        lgsub.original_filename AS group_submission_original_filename,
+        lgsub.mime_type AS group_submission_mime_type,
+        lgsub.file_size AS group_submission_file_size,
+        lgsub.uploaded_by_student_id AS group_submission_uploaded_by_student_id,
+        TRIM(
+          uploader.last_name || ', ' || uploader.first_name ||
+          CASE WHEN uploader.middle_name IS NOT NULL AND uploader.middle_name <> ''
+            THEN ' ' || uploader.middle_name ELSE '' END ||
+          CASE WHEN uploader.suffix IS NOT NULL AND uploader.suffix <> ''
+            THEN ' ' || uploader.suffix ELSE '' END
+        ) AS group_submission_uploaded_by_name,
+        lgsub.submitted_at AS group_submission_submitted_at,
+        lgsub.updated_at AS group_submission_updated_at,
+        COALESCE(ls.updated_at, sgs.group_score_updated_at) AS score_updated_at
       FROM laboratories l
-      INNER JOIN laboratory_scores ls
+      LEFT JOIN laboratory_scores ls
         ON ls.laboratory_id = l.id
         AND ls.student_id = ?1
-      LEFT JOIN student_group_scores sgs
+      LEFT JOIN student_groups sgs
         ON sgs.laboratory_id = l.id
+      LEFT JOIN laboratory_group_submissions lgsub
+        ON lgsub.laboratory_id = l.id
+        AND lgsub.group_id = sgs.group_id
+      LEFT JOIN students uploader
+        ON uploader.id = lgsub.uploaded_by_student_id
       WHERE l.class_id = ?2
-        AND ls.individual_score IS NOT NULL
         AND (
-          l.lab_type = 'individual'
-          OR sgs.group_score IS NOT NULL
+          (l.lab_type = 'individual' AND ls.individual_score IS NOT NULL)
+          OR (
+            l.lab_type = 'group'
+            AND ${LABORATORY_EFFECTIVE_LOCK_SQL}
+            AND sgs.group_id IS NOT NULL
+          )
         )
       ORDER BY l.lab_no DESC, l.id DESC
     `
   )
     .bind(authenticatedStudentId, classItem.id)
-    .all<StudentProfileData["laboratories"][number]>();
+    .all<StudentPortalLaboratoryRow>();
+
+  const memberResult = await env.DB.prepare(
+    `
+      SELECT
+        lg.id AS group_id,
+        s.id AS student_id,
+        TRIM(
+          s.last_name || ', ' || s.first_name ||
+          CASE WHEN s.middle_name IS NOT NULL AND s.middle_name <> ''
+            THEN ' ' || s.middle_name ELSE '' END ||
+          CASE WHEN s.suffix IS NOT NULL AND s.suffix <> ''
+            THEN ' ' || s.suffix ELSE '' END
+        ) AS name
+      FROM laboratory_group_members lgm
+      INNER JOIN laboratory_groups lg ON lg.id = lgm.laboratory_group_id
+      INNER JOIN laboratories l ON l.id = lg.laboratory_id
+      INNER JOIN students s ON s.id = lgm.student_id
+      WHERE l.class_id = ?2
+        AND ${LABORATORY_EFFECTIVE_LOCK_SQL}
+        AND EXISTS (
+          SELECT 1
+          FROM laboratory_group_members own_membership
+          WHERE own_membership.laboratory_group_id = lg.id
+            AND own_membership.student_id = ?1
+        )
+      ORDER BY lg.id ASC, s.last_name ASC, s.first_name ASC
+    `
+  )
+    .bind(authenticatedStudentId, classItem.id)
+    .all<{ group_id: number; student_id: number; name: string }>();
+
+  const membersByGroup = new Map<number, StudentPortalLaboratoryRecord["group_members"]>();
+  for (const member of memberResult.results) {
+    const members = membersByGroup.get(Number(member.group_id)) ?? [];
+    members.push({ student_id: Number(member.student_id), name: member.name });
+    membersByGroup.set(Number(member.group_id), members);
+  }
+
+  const records: StudentPortalLaboratoryRecord[] = result.results.map((record) => ({
+    ...record,
+    group_submission: record.group_submission_id === null
+      ? null
+      : {
+          id: record.group_submission_id,
+          original_filename: record.group_submission_original_filename ?? "Submission",
+          mime_type: record.group_submission_mime_type ?? "application/octet-stream",
+          file_size: Number(record.group_submission_file_size ?? 0),
+          uploaded_by_student_id: Number(
+            record.group_submission_uploaded_by_student_id ?? 0
+          ),
+          uploaded_by_name: record.group_submission_uploaded_by_name ?? "Student",
+          submitted_at: record.group_submission_submitted_at ?? "",
+          updated_at: record.group_submission_updated_at ?? "",
+          timing: record.group_submission_updated_at
+            ? getLaboratorySubmissionTiming(
+                record.group_submission_updated_at,
+                record.due_date
+              )
+            : null,
+        },
+    group_members: record.group_id === null
+      ? []
+      : membersByGroup.get(Number(record.group_id)) ?? [],
+  }));
 
   return {
     classItem,
-    records: result.results,
-    summary: summarizeStudentLaboratories(result.results),
+    records,
+    summary: summarizeStudentLaboratories(records),
   };
 }
 export async function getStudentPortalDashboard(

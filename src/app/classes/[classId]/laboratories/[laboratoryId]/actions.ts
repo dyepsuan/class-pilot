@@ -4,6 +4,28 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth/session";
+import {
+  getLaboratoryGroupingLifecycleState,
+  isLaboratoryGroupingEffectivelyLocked,
+} from "@/lib/db/laboratory-grouping";
+
+function getGroupingUnlockBlockedMessage({
+  hasScores,
+  hasSubmissions,
+}: {
+  hasScores: boolean;
+  hasSubmissions: boolean;
+}) {
+  if (hasSubmissions) {
+    return "Groups cannot be unlocked because a group submission has already been recorded.";
+  }
+
+  if (hasScores) {
+    return "Groups cannot be unlocked because scoring has already started.";
+  }
+
+  return "Groups cannot be unlocked after a submission or score has been recorded.";
+}
 
 function refreshLaboratory(classId: string, laboratoryId: string) {
   revalidatePath(
@@ -15,35 +37,180 @@ async function isGroupStructureLocked(
   laboratoryId: number
 ) {
   const { env } = getCloudflareContext();
+  return isLaboratoryGroupingEffectivelyLocked(env.DB, laboratoryId);
+}
 
-  const result = await env.DB.prepare(
+export type GroupLockState = {
+  error?: string;
+  success?: boolean;
+};
+
+function refreshGroupingRoutes(classId: string, laboratoryId: string) {
+  refreshLaboratory(classId, laboratoryId);
+  revalidatePath(`/classes/${classId}/laboratories`);
+  revalidatePath("/student/laboratories");
+  revalidatePath("/student");
+}
+
+export async function lockLaboratoryGroups(
+  classId: string,
+  laboratoryId: string,
+  _previousState: GroupLockState,
+  _formData: FormData
+): Promise<GroupLockState> {
+  await requireUser();
+  void _previousState;
+  void _formData;
+  const numericClassId = Number(classId);
+  const numericLaboratoryId = Number(laboratoryId);
+  if (!Number.isInteger(numericClassId) || !Number.isInteger(numericLaboratoryId)) {
+    return { error: "Invalid laboratory." };
+  }
+
+  const { env } = getCloudflareContext();
+  const laboratory = await env.DB.prepare(
     `
-      SELECT
-        (
-          SELECT COUNT(*)
-          FROM laboratory_groups
-          WHERE laboratory_id = ?
-            AND group_score IS NOT NULL
-        ) AS group_scores,
-
-        (
-          SELECT COUNT(*)
-          FROM laboratory_scores
-          WHERE laboratory_id = ?
-            AND individual_score IS NOT NULL
-        ) AS individual_scores
+      SELECT id, lab_type, groups_locked_at,
+        (SELECT COUNT(*) FROM laboratory_groups WHERE laboratory_id = laboratories.id) AS group_count
+      FROM laboratories
+      WHERE id = ?1 AND class_id = ?2
+      LIMIT 1
     `
-  )
-    .bind(laboratoryId, laboratoryId)
-    .first<{
-      group_scores: number;
-      individual_scores: number;
-    }>();
+  ).bind(numericLaboratoryId, numericClassId).first<{
+    id: number;
+    lab_type: "individual" | "group";
+    groups_locked_at: string | null;
+    group_count: number;
+  }>();
 
-  return (
-    Number(result?.group_scores ?? 0) > 0 ||
-    Number(result?.individual_scores ?? 0) > 0
+  if (!laboratory || laboratory.lab_type !== "group") {
+    return { error: "Group laboratory not found." };
+  }
+  if (laboratory.groups_locked_at) {
+    return { error: "This laboratory's groups are already locked." };
+  }
+  if (Number(laboratory.group_count) === 0) {
+    return { error: "Create at least one group before locking the grouping." };
+  }
+
+  await env.DB.prepare(
+    `
+      UPDATE laboratories
+      SET groups_locked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?1
+        AND class_id = ?2
+        AND lab_type = 'group'
+        AND groups_locked_at IS NULL
+        AND EXISTS (SELECT 1 FROM laboratory_groups WHERE laboratory_id = ?1)
+    `
+  ).bind(numericLaboratoryId, numericClassId).run();
+
+  const locked = await env.DB.prepare(
+    `SELECT groups_locked_at FROM laboratories WHERE id = ?1 AND class_id = ?2`
+  ).bind(numericLaboratoryId, numericClassId)
+    .first<{ groups_locked_at: string | null }>();
+  if (!locked?.groups_locked_at) {
+    return { error: "Could not lock the laboratory groups. Please try again." };
+  }
+
+  refreshGroupingRoutes(classId, laboratoryId);
+  return { success: true };
+}
+
+export async function unlockLaboratoryGroups(
+  classId: string,
+  laboratoryId: string,
+  _previousState: GroupLockState,
+  _formData: FormData
+): Promise<GroupLockState> {
+  await requireUser();
+  void _previousState;
+  void _formData;
+  const numericClassId = Number(classId);
+  const numericLaboratoryId = Number(laboratoryId);
+  if (!Number.isInteger(numericClassId) || !Number.isInteger(numericLaboratoryId)) {
+    return { error: "Invalid laboratory." };
+  }
+
+  const { env } = getCloudflareContext();
+  const laboratory = await env.DB.prepare(
+    `SELECT id, lab_type, groups_locked_at FROM laboratories WHERE id = ?1 AND class_id = ?2 LIMIT 1`
+  ).bind(numericLaboratoryId, numericClassId).first<{
+    id: number;
+    lab_type: "individual" | "group";
+    groups_locked_at: string | null;
+  }>();
+
+  if (!laboratory) {
+    return { error: "Laboratory not found." };
+  }
+  if (laboratory.lab_type !== "group") {
+    return { error: "This is not a group laboratory." };
+  }
+  if (!laboratory.groups_locked_at) {
+    return { error: "This laboratory's groups are not locked." };
+  }
+  const lifecycle = await getLaboratoryGroupingLifecycleState(
+    env.DB,
+    numericLaboratoryId
   );
+
+  if (!lifecycle.canUnlock) {
+    return { error: getGroupingUnlockBlockedMessage(lifecycle) };
+  }
+
+  try {
+    await env.DB.prepare(
+      `
+        UPDATE laboratories
+        SET groups_locked_at = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?1
+          AND class_id = ?2
+          AND lab_type = 'group'
+          AND groups_locked_at IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM laboratory_groups
+            WHERE laboratory_id = ?1 AND group_score IS NOT NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM laboratory_scores
+            WHERE laboratory_id = ?1 AND individual_score IS NOT NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM laboratory_group_submissions
+            WHERE laboratory_id = ?1
+          )
+      `
+    ).bind(numericLaboratoryId, numericClassId).run();
+  } catch (error) {
+    console.error("Failed to unlock laboratory groups:", error);
+
+    const currentLifecycle = await getLaboratoryGroupingLifecycleState(
+      env.DB,
+      numericLaboratoryId
+    );
+
+    return {
+      error: currentLifecycle.canUnlock
+        ? "Could not unlock the laboratory groups. Please try again."
+        : getGroupingUnlockBlockedMessage(currentLifecycle),
+    };
+  }
+
+  const current = await env.DB.prepare(
+    `SELECT groups_locked_at FROM laboratories WHERE id = ?1 AND class_id = ?2`
+  ).bind(numericLaboratoryId, numericClassId)
+    .first<{ groups_locked_at: string | null }>();
+  if (current?.groups_locked_at) {
+    const currentLifecycle = await getLaboratoryGroupingLifecycleState(
+      env.DB,
+      numericLaboratoryId
+    );
+    return { error: getGroupingUnlockBlockedMessage(currentLifecycle) };
+  }
+
+  refreshGroupingRoutes(classId, laboratoryId);
+  return { success: true };
 }
 
 export async function createLaboratoryGroup(
@@ -61,11 +228,7 @@ export async function createLaboratoryGroup(
   }
 
   if (await isGroupStructureLocked(labId)) {
-    console.warn(
-      "Cannot create group: laboratory grading has already started."
-    );
-
-    return;
+    throw new Error("This laboratory's groups are locked.");
   }
 
   if (!name) {
@@ -114,7 +277,7 @@ export async function addStudentToGroup(
   }
 
   if (await isGroupStructureLocked(labId)) {
-    return;
+    throw new Error("This laboratory's groups are locked.");
   }
 
   const { env } = getCloudflareContext();
@@ -209,7 +372,7 @@ export async function removeStudentFromGroup(
   const labId = Number(laboratoryId);
 
   if (await isGroupStructureLocked(labId)) {
-    return;
+    throw new Error("This laboratory's groups are locked.");
   }
 
   if (
@@ -256,7 +419,7 @@ export async function deleteLaboratoryGroup(
   }
 
   if (await isGroupStructureLocked(labId)) {
-    return;
+    throw new Error("This laboratory's groups are locked.");
   }
 
   if (!Number.isInteger(numericGroupId) || numericGroupId <= 0) {
@@ -342,6 +505,7 @@ export async function randomizeLaboratoryGroups(
       WHERE id = ?
         AND class_id = ?
         AND lab_type = 'group'
+        AND groups_locked_at IS NULL
       LIMIT 1
     `
   )
@@ -350,46 +514,21 @@ export async function randomizeLaboratoryGroups(
 
   if (!laboratory) {
     return {
-      error: "Group laboratory not found.",
+      error: "This laboratory's groups are locked.",
     };
   }
 
   // Do not allow regrouping once scores have already
   // been entered.
-  const scoreCheck = await env.DB.prepare(
-    `
-      SELECT
-        (
-          SELECT COUNT(*)
-          FROM laboratory_groups
-          WHERE laboratory_id = ?
-            AND group_score IS NOT NULL
-        ) AS group_scores,
+  const lifecycle = await getLaboratoryGroupingLifecycleState(
+    env.DB,
+    numericLaboratoryId
+  );
 
-        (
-          SELECT COUNT(*)
-          FROM laboratory_scores
-          WHERE laboratory_id = ?
-            AND individual_score IS NOT NULL
-        ) AS individual_scores
-    `
-  )
-    .bind(
-      numericLaboratoryId,
-      numericLaboratoryId
-    )
-    .first<{
-      group_scores: number;
-      individual_scores: number;
-    }>();
-
-  if (
-    Number(scoreCheck?.group_scores ?? 0) > 0 ||
-    Number(scoreCheck?.individual_scores ?? 0) > 0
-  ) {
+  if (!lifecycle.canUnlock) {
     return {
       error:
-        "Groups cannot be randomized after laboratory scores have been entered.",
+        "Groups cannot be randomized after a submission or score has been recorded.",
     };
   }
 
@@ -598,7 +737,8 @@ export async function saveSingleGroupScores(
         total_points,
         group_points,
         individual_points,
-        status
+        status,
+        groups_locked_at
 
       FROM laboratories
 
@@ -619,6 +759,7 @@ export async function saveSingleGroupScores(
       group_points: number;
       individual_points: number;
       status: "open" | "completed";
+      groups_locked_at: string | null;
     }>();
 
   if (!laboratory) {
@@ -631,6 +772,12 @@ export async function saveSingleGroupScores(
     return {
       error:
         "This laboratory is completed. Reopen it before editing scores.",
+    };
+  }
+
+  if (!laboratory.groups_locked_at) {
+    return {
+      error: "Lock in the laboratory groups before recording scores.",
     };
   }
 

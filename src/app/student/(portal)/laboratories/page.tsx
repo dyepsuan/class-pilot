@@ -1,13 +1,21 @@
 import { notFound } from "next/navigation";
 
 import { requireStudent } from "@/lib/auth/student-session";
-import { getStudentPortalLaboratories } from "@/lib/db/student-portal";
+import {
+  getStudentPortalLaboratories,
+  type StudentPortalLaboratoryRecord,
+} from "@/lib/db/student-portal";
 import {
   getStudentLaboratoryPercentage,
   getStudentLaboratoryScore,
-  type StudentLaboratoryRecord,
 } from "@/lib/db/student-profile";
+import {
+  LABORATORY_SUBMISSION_FILE_ACCEPT,
+  MAX_LABORATORY_SUBMISSION_SIZE,
+} from "@/lib/laboratory-submissions/validation";
 import { getStudentPortalContext } from "@/lib/student-portal-class";
+
+import StudentGroupSubmission from "./StudentGroupSubmission";
 
 function formatScore(value: number): string {
   return new Intl.NumberFormat("en-PH", { maximumFractionDigits: 2 }).format(value);
@@ -56,7 +64,7 @@ function SummaryCard({ label, value, detail }: {
   );
 }
 
-function TypeBadge({ type }: { type: StudentLaboratoryRecord["lab_type"] }) {
+function TypeBadge({ type }: { type: StudentPortalLaboratoryRecord["lab_type"] }) {
   return (
     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
       type === "group"
@@ -68,7 +76,7 @@ function TypeBadge({ type }: { type: StudentLaboratoryRecord["lab_type"] }) {
   );
 }
 
-function StatusBadge({ status }: { status: StudentLaboratoryRecord["status"] }) {
+function StatusBadge({ status }: { status: StudentPortalLaboratoryRecord["status"] }) {
   return (
     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
       status === "completed"
@@ -101,13 +109,33 @@ function ScoreItem({ label, score, possible, emphasized = false }: {
   );
 }
 
-function LaboratoryResult({ laboratory }: { laboratory: StudentLaboratoryRecord }) {
+function StudentScoreBadge({ score, possible }: {
+  score: number | null;
+  possible: number;
+}) {
+  return (
+    <div className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-700 ring-1 ring-inset ring-slate-200 sm:shrink-0">
+      <span className="text-slate-500">Your Score:</span>
+      <span className="min-w-0 tabular-nums text-slate-950">
+        {score === null
+          ? "Not scored"
+          : `${formatScore(score)} / ${formatScore(possible)}`}
+      </span>
+    </div>
+  );
+}
+
+function LaboratoryResult({
+  laboratory,
+  authenticatedStudentId,
+}: {
+  laboratory: StudentPortalLaboratoryRecord;
+  authenticatedStudentId: number;
+}) {
   const score = getStudentLaboratoryScore(laboratory);
   const percentage = getStudentLaboratoryPercentage(laboratory);
   const startDate = formatDate(laboratory.start_date);
   const dueDate = formatDate(laboratory.due_date);
-
-  if (score === null) return null;
 
   return (
     <article className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -133,8 +161,38 @@ function LaboratoryResult({ laboratory }: { laboratory: StudentLaboratoryRecord 
           </div>
         </div>
 
+        {laboratory.lab_type === "group" && laboratory.group_name && (
+          <section className="mt-5 border-t border-slate-100 pt-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+              Your Group
+            </p>
+            <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h4 className="min-w-0 break-words text-base font-bold text-slate-950">
+                {laboratory.group_name}
+              </h4>
+              <StudentScoreBadge
+                score={score}
+                possible={Number(laboratory.total_points)}
+              />
+            </div>
+            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              {laboratory.group_members.map((member) => (
+                <li
+                  key={member.student_id}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+                >
+                  {member.name}
+                  {member.student_id === authenticatedStudentId && (
+                    <span className="ml-1 font-semibold text-blue-700">— You</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {score !== null && laboratory.lab_type === "individual" && (
         <div className="mt-5 border-t border-slate-100 pt-5">
-          {laboratory.lab_type === "individual" ? (
             <dl className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
               <ScoreItem label="Individual Score" score={score}
                 possible={Number(laboratory.individual_points)} emphasized />
@@ -145,23 +203,18 @@ function LaboratoryResult({ laboratory }: { laboratory: StudentLaboratoryRecord 
                 </dd>
               </div>
             </dl>
-          ) : (
-            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_10rem]">
-              <ScoreItem label="Group Score" score={Number(laboratory.group_score)}
-                possible={Number(laboratory.group_points)} />
-              <ScoreItem label="Individual Contribution" score={Number(laboratory.individual_score)}
-                possible={Number(laboratory.individual_points)} />
-              <ScoreItem label="Final Score" score={score}
-                possible={Number(laboratory.total_points)} emphasized />
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Percentage</dt>
-                <dd className="mt-1 text-lg font-bold text-slate-900 tabular-nums">
-                  {formatPercentage(percentage)}
-                </dd>
-              </div>
-            </dl>
-          )}
         </div>
+        )}
+
+        {laboratory.lab_type === "group" && laboratory.group_name && (
+          <StudentGroupSubmission
+            laboratoryId={laboratory.laboratory_id}
+            laboratoryStatus={laboratory.status}
+            submission={laboratory.group_submission}
+            accept={LABORATORY_SUBMISSION_FILE_ACCEPT}
+            maximumFileSize={MAX_LABORATORY_SUBMISSION_SIZE}
+          />
+        )}
       </div>
     </article>
   );
@@ -191,7 +244,7 @@ export default async function StudentLaboratoriesPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Laboratories</h1>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            Review your laboratory scores and performance for this class.
+            Review your official group assignments and laboratory scores for this class.
           </p>
         </div>
         <div className="min-w-0 sm:max-w-sm sm:text-right">
@@ -222,12 +275,12 @@ export default async function StudentLaboratoriesPage() {
             <h2 id="laboratory-results-heading"
               className="text-lg font-bold tracking-tight text-slate-950">Laboratory Results</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              Group results include your shared group score and your own contribution.
+              Locked group assignments appear here alongside saved score details.
             </p>
           </div>
           {records.length > 0 && (
             <p className="shrink-0 text-sm font-medium text-slate-500">
-              {records.length} scored {records.length === 1 ? "laboratory" : "laboratories"}
+              {records.length} {records.length === 1 ? "laboratory" : "laboratories"}
             </p>
           )}
         </div>
@@ -236,15 +289,19 @@ export default async function StudentLaboratoriesPage() {
           <div className="rounded-xl border border-slate-200 bg-white px-5 py-12 text-center sm:px-6">
             <div aria-hidden="true"
               className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-sm font-bold text-slate-500">L</div>
-            <h3 className="mt-4 text-sm font-semibold text-slate-900">No laboratory scores yet</h3>
+            <h3 className="mt-4 text-sm font-semibold text-slate-900">No laboratory activity yet</h3>
             <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-slate-500">
-              Your laboratory results will appear here after your instructor completes the scoring.
+              Official group assignments and saved results will appear here when available.
             </p>
           </div>
         ) : (
           <div className="space-y-4">
             {records.map((laboratory) => (
-              <LaboratoryResult key={laboratory.laboratory_id} laboratory={laboratory} />
+              <LaboratoryResult
+                key={laboratory.laboratory_id}
+                laboratory={laboratory}
+                authenticatedStudentId={authenticatedStudent.id}
+              />
             ))}
           </div>
         )}

@@ -7,8 +7,14 @@ import GroupScoring from "./GroupScoring";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { requireUser } from "@/lib/auth/session";
+import { getInstructorManagedClass } from "@/lib/auth/instructor-class";
+import { getAuthorizedInstructorLaboratorySubmissionSummaries } from "@/lib/auth/laboratory-submissions";
+import { getLaboratoryGroupingLifecycleState } from "@/lib/db/laboratory-grouping";
+import { getLaboratorySubmissionTiming } from "@/lib/laboratory-submissions/deadline";
 
 import GroupSetup from "./GroupSetup";
+import GroupLockControls from "./GroupLockControls";
 
 type PageProps = {
   params: Promise<{
@@ -30,6 +36,7 @@ type Laboratory = {
   start_date: string | null;
   due_date: string | null;
   status: "open" | "completed";
+  groups_locked_at: string | null;
 };
 
 type LaboratoryGroup = {
@@ -77,6 +84,16 @@ export default async function LaboratoryDetailsPage({
   const numericClassId = Number(classId);
   const numericLaboratoryId = Number(laboratoryId);
 
+  const instructor = await requireUser();
+  const managedClass = await getInstructorManagedClass(
+    numericClassId,
+    instructor
+  );
+
+  if (!managedClass) {
+    notFound();
+  }
+
   const { env } = getCloudflareContext();
 
   const laboratory = await env.DB.prepare(
@@ -93,7 +110,8 @@ export default async function LaboratoryDetailsPage({
       individual_points,
       start_date,
       due_date,
-      status
+      status,
+      groups_locked_at
 
       FROM laboratories
 
@@ -109,6 +127,31 @@ export default async function LaboratoryDetailsPage({
   if (!laboratory) {
     notFound();
   }
+
+  const submissionSummaries = laboratory.lab_type === "group"
+    ? await getAuthorizedInstructorLaboratorySubmissionSummaries(
+        instructor,
+        numericClassId,
+        numericLaboratoryId
+      )
+    : [];
+
+  if (laboratory.lab_type === "group" && submissionSummaries === null) {
+    notFound();
+  }
+
+  const groupSubmissions = (submissionSummaries ?? []).map((submission) => ({
+    groupId: submission.groupId,
+    originalFilename: submission.originalFilename,
+    fileSize: submission.fileSize,
+    uploadedByName: submission.uploadedByName,
+    submittedAt: submission.submittedAt,
+    updatedAt: submission.updatedAt,
+    timing: getLaboratorySubmissionTiming(
+      submission.updatedAt,
+      laboratory.due_date
+    ),
+  }));
 
   const groupResult = await env.DB.prepare(
     `
@@ -169,15 +212,17 @@ export default async function LaboratoryDetailsPage({
     studentScoreResult.results ?? [];
   
 
-    const groupStructureLocked =
-      laboratory.status === "completed" ||
-      groups.some(
-        (group) => group.group_score !== null
-      ) ||
-      studentScores.some(
-        (score) =>
-          score.individual_score !== null
-      );
+    const lifecycle = await getLaboratoryGroupingLifecycleState(
+      env.DB,
+      numericLaboratoryId
+    );
+    const hasScores = lifecycle.hasScores;
+    const hasSubmissions = lifecycle.hasSubmissions;
+    const groupingLocked =
+      Boolean(laboratory.groups_locked_at) ||
+      hasScores ||
+      hasSubmissions;
+    const groupMutationLocked = laboratory.status === "completed" || groupingLocked;
   /*
    * =====================================================
    * STUDENT ROSTER
@@ -276,16 +321,6 @@ export default async function LaboratoryDetailsPage({
       (student) => student.active
     );
 
-    const assignedStudentIds = new Set(
-    memberships.map(
-        (membership) => membership.student_id
-    )
-    );
-
-    const unassignedCount = activeStudents.filter(
-    (student) =>
-        !assignedStudentIds.has(student.id)
-    ).length;    
   /*
    * DELETE the line above once you paste your existing
    * quiz student query here.
@@ -465,7 +500,7 @@ export default async function LaboratoryDetailsPage({
               startDate: laboratory.start_date,
               dueDate: laboratory.due_date,
             }}
-            scoringLocked={groupStructureLocked}
+            scoringLocked={groupMutationLocked}
           />
 
           <div className="w-full sm:w-auto">
@@ -547,17 +582,28 @@ export default async function LaboratoryDetailsPage({
       <div className="mt-8">
             {laboratory.lab_type === "group" ? (
             <div className="space-y-8">
+                <GroupLockControls
+                classId={classId}
+                laboratoryId={laboratoryId}
+                locked={groupingLocked}
+                hasScores={hasScores}
+                hasSubmissions={hasSubmissions}
+                hasGroups={groups.length > 0}
+                />
+
                 <GroupSetup
                 classId={classId}
                 laboratoryId={laboratoryId}
                 groups={groups}
                 memberships={memberships}
                 students={students}
+                submissions={groupSubmissions}
                 studentScores={studentScores}
                 totalPoints={laboratory.total_points}
                 groupPoints={laboratory.group_points}
                 individualPoints={laboratory.individual_points}
-                locked={groupStructureLocked}
+                locked={groupMutationLocked}
+                scoringEnabled={groupingLocked}
                 readOnly={laboratory.status === "completed"}
                 />
 

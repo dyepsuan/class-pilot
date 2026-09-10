@@ -39,6 +39,7 @@ type Props = {
   totalPoints: number;
   groupPoints: number;
   individualPoints: number;
+  disabled: boolean;
   readOnly: boolean;
 };
 
@@ -74,6 +75,7 @@ export default function GroupScoreModal({
   totalPoints,
   groupPoints,
   individualPoints,
+  disabled,
   readOnly,
 }: Props) {
   const router = useRouter();
@@ -188,11 +190,13 @@ export default function GroupScoreModal({
     <>
       <button
         type="button"
-        disabled={members.length === 0}
+        disabled={members.length === 0 || disabled}
         onClick={() => setOpen(true)}
         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {readOnly
+        {disabled
+          ? "Score Group"
+          : readOnly
           ? "View Score"
           : isScored
             ? "Edit Score"

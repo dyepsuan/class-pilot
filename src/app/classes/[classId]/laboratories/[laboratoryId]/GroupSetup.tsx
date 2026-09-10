@@ -1,5 +1,9 @@
 import GroupScoreModal from "./GroupScoreModal";
 import RandomGrouping from "./RandomGrouping";
+import InstructorGroupSubmission, {
+  getInstructorSubmissionStatusLabel,
+  type InstructorGroupSubmissionView,
+} from "./InstructorGroupSubmission";
 
 import {
   addStudentToGroup,
@@ -39,6 +43,7 @@ type GroupSetupProps = {
   groups: Group[];
   memberships: Membership[];
   students: Student[];
+  submissions: InstructorGroupSubmissionView[];
 
   studentScores: StudentScore[];
 
@@ -47,6 +52,7 @@ type GroupSetupProps = {
   individualPoints: number;
 
   locked: boolean;
+  scoringEnabled: boolean;
   readOnly: boolean;
 };
 
@@ -59,11 +65,13 @@ export default function GroupSetup({
   groups,
   memberships,
   students,
+  submissions,
   studentScores,
   totalPoints,
   groupPoints,
   individualPoints,
   locked,
+  scoringEnabled,
   readOnly,
 }: GroupSetupProps) {
   const assignedStudentIds = new Set(
@@ -77,6 +85,9 @@ export default function GroupSetup({
   const activeAssignedCount = activeStudents.filter((student) =>
     assignedStudentIds.has(student.id)
   ).length;
+  const submissionsByGroup = new Map(
+    submissions.map((submission) => [submission.groupId, submission])
+  );
 
   const createGroupAction = createLaboratoryGroup.bind(
     null,
@@ -103,8 +114,8 @@ export default function GroupSetup({
             </div>
 
             <p className="mt-1 text-sm text-slate-500">
-              Grading has already started. Groups and student
-              assignments can no longer be changed.
+              These groups are read-only. Unlocking is available only
+              before scoring begins and while the laboratory is open.
             </p>
           </div>
         )}
@@ -218,6 +229,7 @@ export default function GroupSetup({
                 laboratoryId,
                 String(group.id)
               );
+            const submission = submissionsByGroup.get(group.id) ?? null;
 
             return (
               <div
@@ -237,6 +249,8 @@ export default function GroupSetup({
                     {groupMemberships.length === 1
                       ? "member"
                       : "members"}
+                    <span className="mx-1 text-slate-300">&bull;</span>
+                    {getInstructorSubmissionStatusLabel(submission)}
                   </p>
                 </div>
 
@@ -253,6 +267,7 @@ export default function GroupSetup({
                     totalPoints={totalPoints}
                     groupPoints={groupPoints}
                     individualPoints={individualPoints}
+                    disabled={!scoringEnabled}
                     readOnly={readOnly}
                   />
 
@@ -328,6 +343,13 @@ export default function GroupSetup({
                     </div>
                   )}
                 </div>
+
+                <InstructorGroupSubmission
+                  classId={classId}
+                  laboratoryId={laboratoryId}
+                  groupId={group.id}
+                  submission={submission}
+                />
 
                 {/* Add student */}
                 {!locked && unassignedStudents.length > 0 && (

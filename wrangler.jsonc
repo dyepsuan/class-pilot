@@ -26,6 +26,15 @@
 		{
 			"binding": "DROPBOX_BUCKET",
 			"bucket_name": "class-pilot-dropbox"
+		},
+		{
+			"bucket_name": "class-pilot-dropbox",
+			"binding": "class_pilot_dropbox",
+			"remote": true
+		},
+		{
+			"binding": "LABORATORY_SUBMISSIONS",
+			"bucket_name": "class-pilot-laboratory-submissions"
 		}
 	],
 	"secrets": {
