@@ -76,7 +76,7 @@ test("open activities avoid scores, member lists, and raw storage fields", () =>
 test("open activities include empty, overdue, and view-all states", () => {
   assert.match(sources.dashboardPage, /No open activities right now\./u);
   assert.match(sources.dashboardPage, /You&apos;re all caught up for this class\./u);
-  assert.match(sources.dashboardPage, /Due \$\{formatActivityDate\(value\)\}/u);
+  assert.match(sources.dashboardPage, /Due \$\{formatPhilippineDateOnly\(value, value\)\}/u);
   assert.match(sources.dashboardPage, /activity\.due_date < currentClassroomDate/u);
   assert.match(sources.dashboardPage, /Overdue/u);
   assert.match(sources.dashboardPage, /View all laboratories/u);

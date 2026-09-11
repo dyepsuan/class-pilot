@@ -16,6 +16,7 @@ import Link from "next/link";
 import type {
   AttendanceRosterItem,
 } from "@/lib/db/attendance";
+import { formatPhilippineTime } from "@/lib/datetime";
 
 type ScanStudent = {
   enrollmentId: number;
@@ -605,22 +606,7 @@ export default function AttendanceQrScanner({
   function formatTime(
     value: string | null
   ) {
-    if (!value) {
-      return "";
-    }
-
-    return new Date(
-      value
-    ).toLocaleTimeString(
-      undefined,
-      {
-        hour:
-          "numeric",
-
-        minute:
-          "2-digit",
-      }
-    );
+    return formatPhilippineTime(value, "");
   }
 
   function getStudentName(

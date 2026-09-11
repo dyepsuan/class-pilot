@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { requireStudent } from "@/lib/auth/student-session";
+import { parseStoredTimestamp } from "@/lib/datetime";
 import { getStudentPortalAttendance } from "@/lib/db/student-portal";
 import type { AttendanceStatus } from "@/lib/db/student-profile";
 import { getStudentPortalContext } from "@/lib/student-portal-class";
@@ -13,15 +14,7 @@ const attendanceBadgeClasses: Record<AttendanceStatus, string> = {
 };
 
 function parseStoredDate(value: string): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00+08:00`);
-  }
-
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
-    return new Date(`${value.replace(" ", "T")}Z`);
-  }
-
-  return new Date(value);
+  return parseStoredTimestamp(value) ?? new Date(Number.NaN);
 }
 
 function formatSessionDate(value: string): string {

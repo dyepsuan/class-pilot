@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import ConfirmationModal from "@/components/ConfirmationModal";
+import { formatPhilippineTimestamp } from "@/lib/datetime";
 import type { StudentSetupLinkRosterItem } from "@/lib/db/student-setup-links";
 
 import {
@@ -27,21 +28,18 @@ function getStudentName(student: StudentSetupLinkRosterItem): string {
 }
 
 function formatExpiration(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "Expiration unavailable";
-  }
-
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "Asia/Manila",
-    timeZoneName: "short",
-  }).format(date);
+  return formatPhilippineTimestamp(
+    value,
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    },
+    "Expiration unavailable"
+  );
 }
 
 function PortalStatus({ active }: { active: boolean }) {

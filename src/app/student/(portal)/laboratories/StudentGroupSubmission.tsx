@@ -4,6 +4,7 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import ConfirmationModal from "@/components/ConfirmationModal";
+import { formatPhilippineLongDateTime } from "@/lib/datetime";
 import type { StudentPortalGroupSubmission } from "@/lib/db/student-portal";
 
 type UploadResponse = {
@@ -36,16 +37,7 @@ function formatFileSize(size: number): string {
 }
 
 function formatSubmissionDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date);
+  return formatPhilippineLongDateTime(value, value);
 }
 
 function SubmissionStatusBadge({ submission }: {

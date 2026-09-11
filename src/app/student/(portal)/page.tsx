@@ -8,6 +8,10 @@ import {
   type StudentActivity,
   type StudentOpenActivity,
 } from "@/lib/db/student-portal";
+import {
+  formatPhilippineDateOnly,
+  formatPhilippineTimestampDate,
+} from "@/lib/datetime";
 import { CLASSROOM_TIME_ZONE } from "@/lib/classroom-time";
 import { getStudentPortalContext } from "@/lib/student-portal-class";
 
@@ -45,31 +49,8 @@ function formatPercentage(value: number | null): string {
   return value === null ? "No scores yet" : `${Math.round(value)}%`;
 }
 
-function parseStoredDate(value: string): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00+08:00`);
-  }
-
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
-    return new Date(`${value.replace(" ", "T")}Z`);
-  }
-
-  return new Date(value);
-}
-
 function formatActivityDate(value: string): string {
-  const date = parseStoredDate(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "Asia/Manila",
-  }).format(date);
+  return formatPhilippineTimestampDate(value, value);
 }
 
 function getCurrentClassroomDateValue(now = new Date()): string {
@@ -86,7 +67,7 @@ function getCurrentClassroomDateValue(now = new Date()): string {
 }
 
 function formatDueDate(value: string | null): string {
-  return value ? `Due ${formatActivityDate(value)}` : "No due date";
+  return value ? `Due ${formatPhilippineDateOnly(value, value)}` : "No due date";
 }
 
 function isOpenActivityOverdue(

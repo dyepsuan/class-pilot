@@ -6,6 +6,10 @@ import {
   type OverviewActivity,
   type OverviewAttendanceSession,
 } from "@/lib/db/class-overview";
+import {
+  formatPhilippineDateTime,
+  formatPhilippineShortDateOnly,
+} from "@/lib/datetime";
 
 type ClassOverviewPageProps = {
   params: Promise<{
@@ -23,52 +27,12 @@ const activityToneClasses: Record<
   DROPBOX: "bg-violet-100 text-violet-700",
 };
 
-function parseStoredDate(value: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00+08:00`);
-  }
-
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
-    return new Date(`${value.replace(" ", "T")}Z`);
-  }
-
-  return new Date(value);
-}
-
 function formatDate(value: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  const date = parseStoredDate(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "Asia/Manila",
-  }).format(date);
+  return value ? formatPhilippineShortDateOnly(value, value) : null;
 }
 
 function formatDateTime(value: string) {
-  const date = parseStoredDate(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date);
+  return formatPhilippineDateTime(value, value);
 }
 
 function attendancePercentage(session: OverviewAttendanceSession) {

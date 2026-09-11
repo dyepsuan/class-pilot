@@ -1,3 +1,4 @@
+import { formatPhilippineLongDateTime } from "@/lib/datetime";
 import type { LaboratorySubmissionTiming } from "@/lib/laboratory-submissions/deadline";
 
 export type InstructorGroupSubmissionView = {
@@ -24,16 +25,7 @@ function formatFileSize(size: number): string {
 }
 
 function formatSubmissionDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date);
+  return formatPhilippineLongDateTime(value, value);
 }
 
 export function getInstructorSubmissionStatusLabel(

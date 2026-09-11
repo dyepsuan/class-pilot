@@ -10,6 +10,7 @@ import {
 } from "./student-profile";
 import { getActiveStudentQrPayload } from "./student-qr";
 import { LABORATORY_EFFECTIVE_LOCK_SQL } from "./laboratory-grouping";
+import { parseStoredTimestamp } from "../datetime";
 import {
   getLaboratorySubmissionTiming,
   type LaboratorySubmissionTiming,
@@ -139,18 +140,6 @@ export type StudentPortalQrData = {
   payload: string | null;
 };
 
-function parseStoredDate(value: string): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00+08:00`);
-  }
-
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
-    return new Date(`${value.replace(" ", "T")}Z`);
-  }
-
-  return new Date(value);
-}
-
 function formatScore(value: number): string {
   return new Intl.NumberFormat("en-PH", {
     maximumFractionDigits: 2,
@@ -229,8 +218,8 @@ export function summarizeStudentAcademics(
 
   activities.sort(
     (left, right) =>
-      parseStoredDate(right.occurredAt).getTime() -
-      parseStoredDate(left.occurredAt).getTime()
+      (parseStoredTimestamp(right.occurredAt)?.getTime() ?? 0) -
+      (parseStoredTimestamp(left.occurredAt)?.getTime() ?? 0)
   );
 
   return {

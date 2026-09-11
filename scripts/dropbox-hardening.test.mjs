@@ -7,10 +7,12 @@ import ts from "typescript";
 
 async function loadTypeScriptModule(relativePath) {
   const sourcePath = fileURLToPath(new URL(relativePath, import.meta.url));
-  const source = (await readFile(sourcePath, "utf8")).replace(
-    /^import "server-only";\r?\n\r?\n/u,
-    ""
-  );
+  const source = (await readFile(sourcePath, "utf8"))
+    .replace(/^import "server-only";\r?\n\r?\n/u, "")
+    .replace(
+      /^import \{ formatPhilippineShortTimestampDate \} from "@\/lib\/datetime";\r?\n\r?\n/u,
+      "const formatPhilippineShortTimestampDate = (value) => value;\n\n"
+    );
   const javascript = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ESNext,

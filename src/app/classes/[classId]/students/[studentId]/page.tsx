@@ -12,6 +12,10 @@ import {
   summarizeStudentQuizzes,
   type AttendanceStatus,
 } from "@/lib/db/student-profile";
+import {
+  formatPhilippineDateTime,
+  parseStoredTimestamp,
+} from "@/lib/datetime";
 
 type PageProps = {
   params: Promise<{
@@ -67,15 +71,7 @@ function getInitials(student: {
 }
 
 function parseStoredDate(value: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00+08:00`);
-  }
-
-  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)) {
-    return new Date(`${value.replace(" ", "T")}Z`);
-  }
-
-  return new Date(value);
+  return parseStoredTimestamp(value) ?? new Date(Number.NaN);
 }
 
 function formatDate(value: string | null) {
@@ -98,20 +94,7 @@ function formatDate(value: string | null) {
 }
 
 function formatActivityDate(value: string) {
-  const date = parseStoredDate(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "Asia/Manila",
-  }).format(date);
+  return formatPhilippineDateTime(value, value);
 }
 
 function formatScore(value: number) {

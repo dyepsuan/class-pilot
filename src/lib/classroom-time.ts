@@ -1,4 +1,9 @@
-export const CLASSROOM_TIME_ZONE = "Asia/Manila";
+import {
+  formatPhilippineDateTime,
+  PHILIPPINE_TIME_ZONE,
+} from "./datetime";
+
+export const CLASSROOM_TIME_ZONE = PHILIPPINE_TIME_ZONE;
 
 export type ClassroomDate = {
   weekday: string;
@@ -23,24 +28,7 @@ export function getClassroomDate(now = new Date()): ClassroomDate {
 }
 
 export function formatClassroomDateTime(value: string) {
-  const normalized =
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
-      ? `${value.replace(" ", "T")}Z`
-      : value;
-  const date = new Date(normalized);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: CLASSROOM_TIME_ZONE,
-  }).format(date);
+  return formatPhilippineDateTime(value, value);
 }
 
 export function getSchoolYearOptions(now = new Date()) {

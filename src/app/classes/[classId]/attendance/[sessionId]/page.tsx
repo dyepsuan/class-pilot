@@ -3,6 +3,10 @@ import { notFound } from "next/navigation";
 
 import AttendanceQrScanner from "@/components/attendance-qr-scanner";
 import PendingSubmitButton from "@/components/pending-submit-button";
+import {
+  formatPhilippineDateTime,
+  formatPhilippineTime,
+} from "@/lib/datetime";
 
 import {
   getAttendanceRoster,
@@ -93,18 +97,7 @@ export default async function AttendanceSessionPage({
       return "—";
     }
 
-    return new Date(
-      value
-    ).toLocaleString(
-      undefined,
-      {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }
-    );
+    return formatPhilippineDateTime(value);
   }
 
   function formatTime(
@@ -114,15 +107,7 @@ export default async function AttendanceSessionPage({
       return "—";
     }
 
-    return new Date(
-      value
-    ).toLocaleTimeString(
-      undefined,
-      {
-        hour: "numeric",
-        minute: "2-digit",
-      }
-    );
+    return formatPhilippineTime(value);
   }
 
   function getStudentName(

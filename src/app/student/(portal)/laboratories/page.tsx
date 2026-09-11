@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { requireStudent } from "@/lib/auth/student-session";
+import { formatPhilippineDateOnly } from "@/lib/datetime";
 import {
   getStudentPortalLaboratories,
   type StudentPortalLaboratoryRecord,
@@ -26,21 +27,8 @@ function formatPercentage(value: number | null): string {
   return `${new Intl.NumberFormat("en-PH", { maximumFractionDigits: 2 }).format(value)}%`;
 }
 
-function parseStoredDate(value: string): Date {
-  if (/^d{4}-d{2}-d{2}$/.test(value)) return new Date(`${value}T00:00:00+08:00`);
-  if (/^d{4}-d{2}-d{2} d{2}:d{2}:d{2}$/.test(value)) {
-    return new Date(`${value.replace(" ", "T")}Z`);
-  }
-  return new Date(value);
-}
-
 function formatDate(value: string | null): string | null {
-  if (!value) return null;
-  const date = parseStoredDate(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila",
-  }).format(date);
+  return value ? formatPhilippineDateOnly(value, value) : null;
 }
 
 function formatTerm(term: string): string {
