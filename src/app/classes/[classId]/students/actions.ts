@@ -67,6 +67,19 @@ export type EnrollmentActionResult = {
   error?: string;
 };
 
+export type AddStudentState = {
+  success?: boolean;
+  restored?: boolean;
+  error?: string;
+  fieldErrors?: UpdateStudentState["fieldErrors"];
+};
+
+export type ImportStudentsState = {
+  success?: boolean;
+  importedCount?: number;
+  error?: string;
+};
+
 function revalidateEnrollmentRoutes(
   classId: number,
   studentId: number
@@ -406,10 +419,10 @@ export async function updateStudent(
   };
 }
 
-export async function addStudentToClass(
+async function addStudent(
   classId: number,
   formData: FormData
-) {
+): Promise<{ restoredEnrollment: boolean }> {
   await requireUser();
 
   if (!Number.isInteger(classId) || classId <= 0) {
@@ -543,6 +556,15 @@ export async function addStudentToClass(
   revalidatePath(`/classes/${classId}`);
   revalidatePath(`/classes/${classId}/students`);
 
+  return { restoredEnrollment };
+}
+
+export async function addStudentToClass(
+  classId: number,
+  formData: FormData
+) {
+  const { restoredEnrollment } = await addStudent(classId, formData);
+
   redirect(
     `/classes/${classId}/students${
       restoredEnrollment ? "?restored=1" : ""
@@ -633,10 +655,10 @@ type ImportedStudent = {
   email: string | null;
 };
 
-export async function importStudentsFromCsv(
+async function importStudents(
   classId: number,
   formData: FormData
-) {
+): Promise<number> {
   await requireUser();
 
   if (!Number.isInteger(classId) || classId <= 0) {
@@ -896,7 +918,89 @@ export async function importStudentsFromCsv(
     `/classes/${classId}/students`
   );
 
+  return students.length;
+}
+
+export async function importStudentsFromCsv(
+  classId: number,
+  formData: FormData
+) {
+  const importedCount = await importStudents(classId, formData);
+
   redirect(
-    `/classes/${classId}/students?imported=${students.length}`
+    `/classes/${classId}/students?imported=${importedCount}`
   );
+}
+
+export async function importStudentsFromModal(
+  classId: number,
+  previousState: ImportStudentsState,
+  formData: FormData
+): Promise<ImportStudentsState> {
+  void previousState;
+
+  try {
+    const importedCount = await importStudents(classId, formData);
+
+    return { success: true, importedCount };
+  } catch (error) {
+    if (error instanceof Error) {
+      const expectedError =
+        error.message.startsWith("Please select") ||
+        error.message.startsWith("Only CSV") ||
+        error.message.startsWith("CSV ") ||
+        error.message.startsWith("The CSV") ||
+        error.message.startsWith("A single import") ||
+        error.message.startsWith("Missing required CSV") ||
+        error.message.startsWith("Duplicate student number") ||
+        error.message === "Class not found.";
+
+      if (expectedError) {
+        return { error: error.message };
+      }
+    }
+
+    return { error: "Could not import students. Please try again." };
+  }
+}
+
+export async function addStudentFromModal(
+  classId: number,
+  previousState: AddStudentState,
+  formData: FormData
+): Promise<AddStudentState> {
+  void previousState;
+
+  const fieldErrors: AddStudentState["fieldErrors"] = {};
+
+  if (!trimmedFormString(formData, "student_number")) {
+    fieldErrors.student_number = "Student number is required.";
+  }
+
+  if (!trimmedFormString(formData, "first_name")) {
+    fieldErrors.first_name = "First name is required.";
+  }
+
+  if (!trimmedFormString(formData, "last_name")) {
+    fieldErrors.last_name = "Last name is required.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      error: "Review the highlighted fields.",
+      fieldErrors,
+    };
+  }
+
+  try {
+    const { restoredEnrollment } = await addStudent(classId, formData);
+
+    return { success: true, restored: restoredEnrollment };
+  } catch (error) {
+    if (error instanceof Error && error.message === "Class not found.") {
+      return { error: error.message };
+    }
+
+    return { error: "Could not add the student. Please try again." };
+  }
 }
