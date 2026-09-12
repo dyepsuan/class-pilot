@@ -14,6 +14,9 @@ import {
 } from "react";
 
 import StudentPortalPinAction from "@/components/student-portal-pin-action";
+import StudentQrSheet, {
+  type StudentQrSheetStudent,
+} from "@/components/student-qr-sheet";
 import type { StudentRosterItem } from "@/lib/db/student-roster";
 import {
   addStudentFromModal,
@@ -551,8 +554,17 @@ export default function StudentRosterManager({
   const [modalView, setModalView] = useState<ModalView>("add");
   const [notice, setNotice] = useState<string | null>(null);
   const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null);
+  const [qrSheetOpen, setQrSheetOpen] = useState(false);
+  const [qrSheetStudent, setQrSheetStudent] =
+    useState<StudentQrSheetStudent | null>(null);
+  const [qrSheetOpener, setQrSheetOpener] = useState<HTMLElement | null>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const closeModal = useCallback(() => setModalOpen(false), []);
+  const closeQrSheet = useCallback(() => setQrSheetOpen(false), []);
+  const handleQrSheetExited = useCallback(() => {
+    setQrSheetStudent(null);
+    setQrSheetOpener(null);
+  }, []);
 
   const visibleStudents = useMemo(() => {
     const normalizedQuery = normalizeSearchValue(query);
@@ -593,6 +605,16 @@ export default function StudentRosterManager({
   function openModal() {
     setModalView("add");
     setModalOpen(true);
+  }
+
+  function openQrSheet(student: StudentRosterItem, opener: HTMLElement) {
+    setQrSheetStudent({
+      studentId: student.student_id,
+      studentName: getStudentName(student),
+      studentNumber: student.student_number,
+    });
+    setQrSheetOpener(opener);
+    setQrSheetOpen(true);
   }
 
   return (
@@ -733,12 +755,15 @@ export default function StudentRosterManager({
                             >
                               View Profile
                             </Link>
-                            <Link
-                              href={`/classes/${classId}/students/${student.student_id}/qr`}
-                              className="flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-semibold leading-tight text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                            <button
+                              type="button"
+                              onClick={(event) =>
+                                openQrSheet(student, event.currentTarget)
+                              }
+                              className="flex min-h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 py-2 text-center text-xs font-semibold leading-tight text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:translate-y-px"
                             >
                               View QR
-                            </Link>
+                            </button>
                             <StudentPortalPinAction
                               classId={classId}
                               studentId={student.student_id}
@@ -780,9 +805,9 @@ export default function StudentRosterManager({
                         <td className="max-w-52 break-words px-5 py-4 text-sm text-slate-600">{student.email ?? "Not provided"}</td>
                         <td className="px-5 py-4">
                           <div className="flex flex-wrap items-start gap-2">
-                            <Link href={`/classes/${classId}/students/${student.student_id}/qr`} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                            <button type="button" onClick={(event) => openQrSheet(student, event.currentTarget)} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:translate-y-px">
                               View QR
-                            </Link>
+                            </button>
                             <StudentPortalPinAction classId={classId} studentId={student.student_id} studentName={studentName} initialHasAccount={student.hasStudentPortalAccount} />
                           </div>
                         </td>
@@ -805,6 +830,14 @@ export default function StudentRosterManager({
         onViewChange={setModalView}
         onClose={closeModal}
         onCompleted={setNotice}
+      />
+      <StudentQrSheet
+        classId={classId}
+        open={qrSheetOpen}
+        student={qrSheetStudent}
+        opener={qrSheetOpener}
+        onRequestClose={closeQrSheet}
+        onExited={handleQrSheetExited}
       />
     </>
   );
