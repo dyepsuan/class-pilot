@@ -237,7 +237,7 @@ export default function StudentQrSheet({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-50 ${entered ? "" : "pointer-events-none"}`}
+      className={`fixed inset-0 z-50 md:flex md:items-center md:justify-center md:p-6 ${entered ? "" : "pointer-events-none"}`}
       aria-hidden={!entered}
     >
       <button
@@ -256,11 +256,13 @@ export default function StudentQrSheet({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className={`absolute bottom-0 left-0 right-0 max-h-[min(42rem,calc(100dvh-1rem))] overflow-y-auto rounded-t-2xl border-x border-t border-slate-200 bg-white shadow-[0_-18px_55px_rgba(15,23,42,0.18)] transition-transform duration-180 ease-out motion-reduce:duration-0 ${
-          entered ? "translate-y-0" : "translate-y-full"
+        className={`absolute bottom-0 left-0 right-0 max-h-[min(42rem,calc(100dvh-1rem))] overflow-y-auto rounded-t-2xl border-x border-t border-slate-200 bg-white shadow-[0_-18px_55px_rgba(15,23,42,0.18)] transition-[transform,opacity] duration-180 ease-out motion-reduce:duration-0 md:relative md:bottom-auto md:left-auto md:right-auto md:max-h-[calc(100dvh-3rem)] md:w-full md:max-w-xl md:rounded-2xl md:border md:shadow-[0_24px_70px_rgba(15,23,42,0.22)] ${
+          entered
+            ? "translate-y-0 md:scale-100 md:opacity-100"
+            : "translate-y-full md:translate-y-0 md:scale-95 md:opacity-0"
         }`}
       >
-        <div className="mx-auto h-1 w-10 rounded-full bg-slate-300" aria-hidden="true" />
+        <div className="mx-auto h-1 w-10 rounded-full bg-slate-300 md:hidden" aria-hidden="true" />
 
         <div className="mx-auto w-full max-w-3xl px-5 pb-7 pt-4 sm:px-8 sm:pb-9">
           <div className="flex items-start justify-between gap-4">

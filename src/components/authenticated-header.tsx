@@ -94,11 +94,11 @@ export default function AuthenticatedHeader(
               {instructorIdentity?.initials}
             </div>
             <div className="hidden min-w-0 text-right sm:block">
-              <p className="text-[10px] font-medium tracking-wider text-slate-400 uppercase">
-                Instructor
-              </p>
               <p className="max-w-48 truncate text-sm font-semibold text-slate-900">
                 {instructorIdentity?.displayName}
+              </p>
+              <p className="text-[10px] font-medium tracking-wider text-slate-400 uppercase">
+                Instructor
               </p>
             </div>
             <SignOutButton />
