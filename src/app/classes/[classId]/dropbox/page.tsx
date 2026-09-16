@@ -1,4 +1,9 @@
 import Link from "next/link";
+import InstructorDropboxSections from "@/components/instructor-dropbox-sections";
+import InstructorClassFiles from "@/components/instructor-class-files";
+import { listInstructorManagedClasses } from "@/lib/auth/instructor-class";
+import { listClassFilesWithViewStatsForInstructorClass } from "@/lib/db/class-files";
+import { CLASS_FILE_INPUT_ACCEPT, MAX_CLASS_FILE_SIZE } from "@/lib/class-files/validation";
 import { notFound } from "next/navigation";
 
 import { getInstructorManagedClass } from "@/lib/auth/instructor-class";
@@ -24,6 +29,7 @@ import {
 type PageProps = {
   params: Promise<{ classId: string }>;
   searchParams: Promise<{
+    section?: string | string[];
     q?: string | string[];
     student?: string | string[];
     type?: string | string[];
@@ -137,7 +143,7 @@ function buildPageHref({
   studentId: number | null;
   fileType: DropboxFileCategory | null;
 }): string {
-  const query = new URLSearchParams();
+  const query = new URLSearchParams({ section: "student" });
 
   if (search) query.set("q", search);
   if (studentId) query.set("student", String(studentId));
@@ -167,6 +173,25 @@ export default async function InstructorDropboxPage({
   }
 
   const query = await searchParams;
+  const section = firstQueryValue(query.section);
+  const showStudentFiles = section === "student" ||
+    (!section && Boolean(query.q || query.student || query.type || query.page));
+  if (!showStudentFiles) {
+    const [files, classes] = await Promise.all([
+      listClassFilesWithViewStatsForInstructorClass(id, instructor), listInstructorManagedClasses(instructor),
+    ]);
+    return (
+      <div className="w-full">
+        <header>
+          <h2 className="text-xl font-semibold text-slate-950">Dropbox</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">Class materials and private student uploads.</p>
+        </header>
+        <InstructorDropboxSections classId={id} section="class" />
+        <InstructorClassFiles classId={id} classes={classes} files={files}
+          accept={CLASS_FILE_INPUT_ACCEPT} maxSize={MAX_CLASS_FILE_SIZE} />
+      </div>
+    );
+  }
   const search = firstQueryValue(query.q).trim().slice(0, 100);
   const requestedStudentId = parsePositiveInteger(
     firstQueryValue(query.student)
@@ -214,6 +239,7 @@ export default async function InstructorDropboxPage({
           Each file is visible only to you and the student who uploaded it.
         </p>
       </header>
+      <InstructorDropboxSections classId={id} section="student" />
 
       <section
         aria-label="Dropbox summary"
@@ -253,6 +279,7 @@ export default async function InstructorDropboxPage({
           action={`/classes/${id}/dropbox`}
           className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] lg:items-end"
         >
+          <input type="hidden" name="section" value="student" />
           <div className="min-w-0">
             <label
               htmlFor="dropbox-search"
@@ -325,7 +352,7 @@ export default async function InstructorDropboxPage({
             </button>
             {hasFilters && (
               <Link
-                href={`/classes/${id}/dropbox`}
+                href={`/classes/${id}/dropbox?section=student`}
                 className="inline-flex flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 lg:flex-none"
               >
                 Clear
@@ -385,7 +412,7 @@ export default async function InstructorDropboxPage({
               Try changing your search or filters.
             </p>
             <Link
-              href={`/classes/${id}/dropbox`}
+              href={`/classes/${id}/dropbox?section=student`}
               className="mt-4 inline-flex rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
             >
               Clear filters

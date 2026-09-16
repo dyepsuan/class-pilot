@@ -57,3 +57,23 @@ export async function getInstructorManagedClass(
     .bind(classId, user.id)
     .first<InstructorManagedClass>();
 }
+
+export function instructorManagedClassCondition(instructorPlaceholder: string): string {
+  return `(c.instructor_id = ${instructorPlaceholder}
+    OR (owner.auth_id IS NULL AND 1 = (
+      SELECT COUNT(*) FROM users authenticated_instructor
+      WHERE authenticated_instructor.role = 'INSTRUCTOR'
+        AND authenticated_instructor.auth_id IS NOT NULL)))`;
+}
+
+export async function listInstructorManagedClasses(user: AuthUser): Promise<InstructorManagedClass[]> {
+  if (user.role !== "INSTRUCTOR") return [];
+  const { env } = getCloudflareContext();
+  const result = await env.DB.prepare(`
+    SELECT c.id, c.subject_code, c.subject_name, c.section, c.school_year, c.term
+    FROM classes c INNER JOIN users owner ON owner.id = c.instructor_id
+    WHERE ${instructorManagedClassCondition("?1")}
+    ORDER BY c.subject_code, c.section, c.id
+  `).bind(user.id).all<InstructorManagedClass>();
+  return result.results;
+}

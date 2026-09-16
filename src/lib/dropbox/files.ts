@@ -29,7 +29,7 @@ export type DropboxUploadFile = {
   name: string;
   size: number;
   type: string;
-  stream(): ReadableStream;
+  arrayBuffer(): Promise<ArrayBuffer>;
 };
 
 function normalizeDisplayName(
@@ -69,13 +69,22 @@ export async function storeDropboxFile({
   }
 
   const normalizedDisplayName = normalizeDisplayName(displayName, file.name);
+  const body = await file.arrayBuffer();
+
+  if (body.byteLength !== file.size) {
+    throw new DropboxUploadValidationError(
+      "INVALID_FILE_SIZE",
+      "The file size is invalid."
+    );
+  }
+
   const storageKey = generateDropboxStorageKey(classId, studentId);
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
 
   await putDropboxObject({
     storageKey,
-    body: file.stream(),
+    body,
     contentType: validation.mimeType,
   });
 

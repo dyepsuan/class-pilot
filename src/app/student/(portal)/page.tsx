@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import StudentClassFilesAttention from "@/components/student-class-files-attention";
+import { countUnreadClassFilesForActiveStudentClass } from "@/lib/db/class-files";
 import { requireStudent } from "@/lib/auth/student-session";
 import {
   getStudentPortalDashboard,
@@ -253,10 +255,10 @@ export default async function StudentDashboardPage() {
     notFound();
   }
 
-  const dashboard = await getStudentPortalDashboard(
-    authenticatedStudent.id,
-    selectedClass
-  );
+  const [dashboard, unreadClassFileCount] = await Promise.all([
+    getStudentPortalDashboard(authenticatedStudent.id, selectedClass),
+    countUnreadClassFilesForActiveStudentClass(selectedClass.id, authenticatedStudent.id),
+  ]);
 
   if (!dashboard) {
     notFound();
@@ -351,6 +353,8 @@ export default async function StudentDashboardPage() {
           />
         </div>
       </section>
+
+      <StudentClassFilesAttention unreadCount={unreadClassFileCount} />
 
       <OpenActivitiesSection
         activities={openActivities}

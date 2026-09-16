@@ -1,5 +1,8 @@
 import { notFound } from "next/navigation";
 
+import StudentClassFiles from "@/components/student-class-files";
+import StudentDropboxSections from "@/components/student-dropbox-sections";
+import { listClassFilesForActiveStudentClass } from "@/lib/db/class-files";
 import StudentDropboxFileList from "@/components/student-dropbox-file-list";
 import StudentDropboxUploader from "@/components/student-dropbox-uploader";
 import { canStudentAccessDropboxClass } from "@/lib/auth/dropbox";
@@ -25,7 +28,12 @@ function formatTerm(term: string): string {
   }
 }
 
-export default async function StudentDropboxPage() {
+export default async function StudentDropboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ section?: string }>;
+}) {
+  const section = (await searchParams).section === "student" ? "student" : "class";
   const student = await requireStudent();
   const { selectedClass } = await getStudentPortalContext(student.id);
 
@@ -36,10 +44,12 @@ export default async function StudentDropboxPage() {
     notFound();
   }
 
-  const files = await listDropboxFilesForStudent(
-    selectedClass.id,
-    student.id
-  );
+  const classFiles = section === "class"
+    ? await listClassFilesForActiveStudentClass(selectedClass.id, student.id)
+    : [];
+  const files = section === "student"
+    ? await listDropboxFilesForStudent(selectedClass.id, student.id)
+    : [];
 
   return (
     <div className="w-full">
@@ -49,7 +59,7 @@ export default async function StudentDropboxPage() {
             Dropbox
           </h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-            Files you upload here are private between you and your instructor.
+            {section === "class" ? "Course materials shared by your instructor." : "Files you upload here are private between you and your instructor."}
           </p>
         </div>
         <div className="min-w-0 sm:max-w-sm sm:text-right">
@@ -63,19 +73,25 @@ export default async function StudentDropboxPage() {
         </div>
       </header>
 
-      <div className="mt-6">
-        <StudentDropboxUploader
-          key={selectedClass.id}
-          accept={DROPBOX_FILE_INPUT_ACCEPT}
-          maximumFileSize={MAX_DROPBOX_FILE_SIZE}
-          maximumFilenameLength={MAX_DROPBOX_FILENAME_LENGTH}
-        />
-      </div>
-
-      <StudentDropboxFileList
-        key={`files-${selectedClass.id}`}
-        initialFiles={files}
-      />
+      <StudentDropboxSections section={section} />
+      {section === "class" ? (
+        <StudentClassFiles files={classFiles} />
+      ) : (
+        <>
+          <div className="mt-6">
+            <StudentDropboxUploader
+              key={selectedClass.id}
+              accept={DROPBOX_FILE_INPUT_ACCEPT}
+              maximumFileSize={MAX_DROPBOX_FILE_SIZE}
+              maximumFilenameLength={MAX_DROPBOX_FILENAME_LENGTH}
+            />
+          </div>
+          <StudentDropboxFileList
+            key={`files-${selectedClass.id}`}
+            initialFiles={files}
+          />
+        </>
+      )}
     </div>
   );
 }
