@@ -8,6 +8,7 @@ export const CLASSROOM_TIME_ZONE = PHILIPPINE_TIME_ZONE;
 export type ClassroomDate = {
   weekday: string;
   dateLabel: string;
+  currentMinutes: number;
 };
 
 export function getClassroomDate(now = new Date()): ClassroomDate {
@@ -15,6 +16,9 @@ export function getClassroomDate(now = new Date()): ClassroomDate {
     weekday: "long",
     month: "long",
     day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
     timeZone: CLASSROOM_TIME_ZONE,
   }).formatToParts(now);
 
@@ -24,6 +28,7 @@ export function getClassroomDate(now = new Date()): ClassroomDate {
   return {
     weekday: part("weekday"),
     dateLabel: `${part("weekday")}, ${part("month")} ${part("day")}`,
+    currentMinutes: Number(part("hour")) * 60 + Number(part("minute")),
   };
 }
 

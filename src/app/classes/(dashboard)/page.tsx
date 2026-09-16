@@ -1,16 +1,12 @@
 import Link from "next/link";
 
-import { matchClassSchedule } from "@/lib/class-schedule";
-import {
-  formatMeetingTimeRange,
-  groupMeetingsForDisplay,
-  timeToMinutes,
-  toClassWeekday,
-} from "@/lib/class-meetings";
+import InstructorTodaySchedule from "@/components/instructor-today-schedule";
+import { groupMeetingsForDisplay } from "@/lib/class-meetings";
 import {
   formatClassroomDateTime,
   getClassroomDate,
 } from "@/lib/classroom-time";
+import { buildTodaySchedule } from "@/lib/dashboard-today";
 import {
   getDashboardData,
   type DashboardActivity,
@@ -71,14 +67,6 @@ function classStatus(classItem: DashboardClass) {
   return "No pending activity";
 }
 
-function legacyStartMinutes(label: string) {
-  const match = /\b(\d{1,2}):(\d{2})\s*(AM|PM)\b/i.exec(label);
-  if (!match) return null;
-  let hours = Number(match[1]) % 12;
-  if (match[3].toUpperCase() === "PM") hours += 12;
-  return hours * 60 + Number(match[2]);
-}
-
 function MetricCard({
   label,
   value,
@@ -111,38 +99,7 @@ function MetricCard({
 export default async function ClassesPage() {
   const { summary, classes, recentActivity } = await getDashboardData();
   const classroomDate = getClassroomDate();
-  const todayWeekday = toClassWeekday(classroomDate.weekday);
-  const todayClasses = classes.flatMap((classItem) => {
-    if (classItem.meetings.length > 0) {
-      return classItem.meetings
-        .filter((meeting) => meeting.weekday === todayWeekday)
-        .map((meeting) => ({
-          eventKey: `${classItem.id}-${meeting.id ?? `${meeting.start_time}-${meeting.end_time}`}`,
-          classItem,
-          meetingTimes: [formatMeetingTimeRange(meeting)],
-          sortTime: timeToMinutes(meeting.start_time),
-        }));
-    }
-
-    const schedule = matchClassSchedule(
-      classItem.schedule_text,
-      classroomDate.weekday
-    );
-
-    return schedule.scheduledToday
-      ? [{
-          eventKey: `legacy-${classItem.id}`,
-          classItem,
-          meetingTimes: schedule.meetingTimes,
-          sortTime: legacyStartMinutes(schedule.meetingTimes[0] ?? ""),
-        }]
-      : [];
-  }).sort(
-    (left, right) =>
-      (left.sortTime ?? Number.MAX_SAFE_INTEGER) -
-        (right.sortTime ?? Number.MAX_SAFE_INTEGER) ||
-      left.classItem.id - right.classItem.id
-  );
+  const todayClasses = buildTodaySchedule(classes, classroomDate);
   const openActivityCount =
     summary.open_attendance_count + summary.open_laboratory_count;
   const openActivityDetail = [
@@ -180,76 +137,12 @@ export default async function ClassesPage() {
           </Link>
         </div>
 
-        <section aria-labelledby="today-heading">
-          <h2
-            id="today-heading"
-            className="text-base font-semibold tracking-tight text-gray-950"
-          >
-            Today <span className="font-normal text-gray-400">—</span>{" "}
-            {classroomDate.dateLabel}
-          </h2>
-
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 shadow-sm">
-            {todayClasses.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-gray-500 sm:px-6">
-                No classes scheduled for today.
-              </p>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {todayClasses.map(({ eventKey, classItem, meetingTimes }) => (
-                  <article
-                    key={eventKey}
-                    className="flex flex-col gap-4 px-5 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-gray-500">
-                        {classItem.subject_code}
-                      </p>
-                      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <h3 className="text-base font-semibold text-gray-950">
-                          {classItem.section}
-                        </h3>
-                        <p className="text-sm text-gray-600">
-                          {classItem.subject_name}
-                        </p>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-gray-500">
-                        {meetingTimes.length > 0 ? (
-                          meetingTimes.map((time) => (
-                            <span key={time}>{time}</span>
-                          ))
-                        ) : (
-                          <span>Time not specified</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Link
-                        href={`/classes/${classItem.id}`}
-                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                      >
-                        Open Class
-                      </Link>
-                      <Link
-                        href={
-                          classItem.open_attendance_session_id
-                            ? `/classes/${classItem.id}/attendance/${classItem.open_attendance_session_id}`
-                            : `/classes/${classItem.id}/attendance/new`
-                        }
-                        className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-                      >
-                        {classItem.open_attendance_session_id
-                          ? "Continue Attendance"
-                          : "Start Attendance"}
-                      </Link>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
+        <InstructorTodaySchedule
+          dateLabel={classroomDate.dateLabel}
+          weekday={classroomDate.weekday}
+          schedule={todayClasses}
+          initialManilaMinutes={classroomDate.currentMinutes}
+        />
 
         {classes.length === 0 ? (
           <section className="mt-8 rounded-xl border border-dashed border-slate-300 bg-white/90 p-8 text-center shadow-sm sm:p-10">
